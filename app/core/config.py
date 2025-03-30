@@ -1,5 +1,5 @@
 import os
-from pydantic import BaseSettings
+from pydantic_settings import BaseSettings
 from dotenv import load_dotenv
 
 # Load environment variables from .env file
@@ -26,7 +26,7 @@ class Settings(BaseSettings):
     FIREBASE_SERVICE_ACCOUNT_KEY: str = os.getenv("FIREBASE_SERVICE_ACCOUNT_KEY", "")
     
     # Hugging Face model
-    HUGGINGFACE_MODEL: str = os.getenv("HUGGINGFACE_MODEL", "dima806/facial_emotions_image_detection")
+    HUGGINGFACE_MODEL: str = os.getenv("HUGGINGFACE_MODEL", "nateraw/vit-age-classifier")
     
     # Security settings
     SECRET_KEY: str = os.getenv("SECRET_KEY", "")

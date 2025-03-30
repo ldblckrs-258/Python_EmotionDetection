@@ -2,8 +2,9 @@ from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, status
 from typing import List, Optional
 from app.services.emotion_detection import detect_emotions
 from app.models.detection import DetectionCreate, DetectionResponse
-from app.auth.router import get_current_user
+from app.auth.router import get_current_user, increment_guest_usage
 from app.models.user import User
+from app.core.config import settings
 
 router = APIRouter()
 
@@ -15,7 +16,21 @@ async def detect_emotion(
     """
     Upload an image to detect facial emotions.
     The image will be processed and the detected emotions will be returned.
+    
+    Guest users are limited to GUEST_MAX_USAGE detections.
     """
+    # Check if user is a guest and has reached usage limit
+    if current_user.is_guest:
+        # Get current usage and increment it
+        new_usage_count = increment_guest_usage(current_user.user_id)
+        
+        # Check if user has exceeded the limit
+        if new_usage_count > settings.GUEST_MAX_USAGE:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Guest users are limited to {settings.GUEST_MAX_USAGE} detections. Please log in for unlimited use."
+            )
+    
     try:
         result = await detect_emotions(file, current_user)
         return result
