@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     DEBUG: bool = os.getenv("DEBUG", "True").lower() == "true"
     API_PREFIX: str = os.getenv("API_PREFIX", "/api")
     HOST: str = os.getenv("HOST", "0.0.0.0")
-    PORT: int = int(os.getenv("PORT", "8000"))
+    PORT: int = int(os.getenv("PORT", "2508"))
     
     # MongoDB settings
     MONGODB_URI: str = os.getenv("MONGODB_URI", "")

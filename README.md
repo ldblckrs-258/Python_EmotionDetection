@@ -62,7 +62,7 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload
 ```
 
-The API will be available at `http://localhost:8000`.
+The API will be available at `http://localhost:2508`.
 
 ### Docker Setup
 
@@ -72,14 +72,14 @@ The API will be available at `http://localhost:8000`.
 docker-compose up -d
 ```
 
-The API will be available at `http://localhost:8000`.
+The API will be available at `http://localhost:2508`.
 
 ## API Documentation
 
 Once the application is running, you can access the interactive API documentation:
 
-- Swagger UI: `http://localhost:8000/docs`
-- ReDoc: `http://localhost:8000/redoc`
+- Swagger UI: `http://localhost:2508/docs`
+- ReDoc: `http://localhost:2508/redoc`
 
 ## API Endpoints
 

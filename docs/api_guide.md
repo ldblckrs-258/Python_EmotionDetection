@@ -8,7 +8,7 @@ API Emotion Detection cung cấp các endpoint để:
 - Phát hiện cảm xúc từ hình ảnh khuôn mặt
 - Quản lý lịch sử phát hiện cảm xúc
 
-Base URL: `http://localhost:8000` (mặc định cho môi trường phát triển)
+Base URL: `http://localhost:2508` (mặc định cho môi trường phát triển)
 
 ## Xác thực (Authentication)
 
@@ -400,7 +400,7 @@ await auth.signInWithPopup(provider)
 const idToken = await firebase.auth().currentUser.getIdToken()
 
 // Gửi token đến API để xác thực và nhận API token
-const response = await fetch("http://localhost:8000/auth/verify-token", {
+const response = await fetch("http://localhost:2508/auth/verify-token", {
   method: "POST",
   headers: { "Content-Type": "application/json" },
   body: JSON.stringify({ id_token: idToken }),
@@ -418,7 +418,7 @@ localStorage.setItem("api_token", authData.access_token)
 const formData = new FormData()
 formData.append("file", imageFile)
 
-const response = await fetch("http://localhost:8000/api/detect", {
+const response = await fetch("http://localhost:2508/api/detect", {
   method: "POST",
   headers: {
     Authorization: `Bearer ${localStorage.getItem("api_token")}`,
@@ -434,7 +434,7 @@ console.log("Emotion detection result:", result)
 
 ```javascript
 // Lấy guest token
-const response = await fetch("http://localhost:8000/auth/guest-token")
+const response = await fetch("http://localhost:2508/auth/guest-token")
 const data = await response.json()
 localStorage.setItem("guest_token", data.access_token)
 
@@ -442,7 +442,7 @@ localStorage.setItem("guest_token", data.access_token)
 const formData = new FormData()
 formData.append("file", imageFile)
 
-const detectResponse = await fetch("http://localhost:8000/api/detect", {
+const detectResponse = await fetch("http://localhost:2508/api/detect", {
   method: "POST",
   headers: {
     Authorization: `Bearer ${localStorage.getItem("guest_token")}`,

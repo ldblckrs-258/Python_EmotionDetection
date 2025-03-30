@@ -38,6 +38,7 @@ async def root():
     }
 
 if __name__ == "__main__":
+    print(settings.PORT)
     uvicorn.run(
         "app.main:app",
         host=settings.HOST,
