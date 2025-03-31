@@ -12,8 +12,10 @@ services:
       - .env
     environment:
       - PORT=2508
+      - WATCHFILES_FORCE_POLLING=true  # Force polling for file changes
+      - WATCHFILES_POLL_INTERVAL=0.5   # Polling interval in seconds
     restart: unless-stopped
-    command: uvicorn app.main:app --host 0.0.0.0 --port 2508 --reload
+    command: uvicorn app.main:app --host 0.0.0.0 --port 2508 --reload --reload-include *.py --reload-include *.json
     networks:
       - app-network
 
