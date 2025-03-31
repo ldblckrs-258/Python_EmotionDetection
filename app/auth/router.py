@@ -1,22 +1,19 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Body
-from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-from typing import Optional, Dict
+from fastapi import APIRouter, Depends, HTTPException, status, Cookie, Response
+from fastapi.security import OAuth2PasswordBearer
+from typing import Optional
 from datetime import datetime, timedelta
 import firebase_admin
 from firebase_admin import credentials, auth as firebase_auth
 from jose import jwt, JWTError
+import json
 import uuid
 from app.core.config import settings
-from app.models.user import User, UserCreate, UserLogin, FirebaseToken
+from app.models.user import User, FirebaseToken
 
 router = APIRouter()
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login", auto_error=False)
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/token", auto_error=False)
 
-# Store for guest users (in memory for now, would use DB in production)
-# Format: {"guest_id": {"usage_count": 0, "last_used": datetime}}
-guest_users: Dict[str, Dict] = {}
-
-# Initialize Firebase (called on application startup)
+# Initialize Firebase 
 firebase_app = None
 
 def init_firebase():
@@ -33,64 +30,110 @@ def init_firebase():
 # Call init_firebase at startup
 init_firebase()
 
-def create_custom_token(firebase_uid: str) -> str:
-    """Create a custom Firebase token for server-to-client auth"""
-    try:
-        custom_token = firebase_auth.create_custom_token(firebase_uid)
-        return custom_token.decode('utf-8')
-    except Exception as e:
-        print(f"Error creating custom token: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Could not create authentication token"
-        )
+# Cookie constants
+GUEST_COOKIE_NAME = "guest_usage_info"
+GUEST_COOKIE_MAX_AGE = 60 * 60 * 24 * 30  # 30 days in seconds
 
 def create_access_token(user_data: dict) -> str:
-    """Create a JWT access token for the API"""
+    """
+    Tạo một JWT access token cho API
+    """
     expire = datetime.utcnow() + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     to_encode = user_data.copy()
     to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
     return encoded_jwt
 
-def create_guest_token(guest_id: str) -> str:
-    """Create a token for guest users"""
-    expire = datetime.utcnow() + timedelta(days=30)  # Longer expiry for guests
-    to_encode = {"sub": guest_id, "exp": expire, "is_guest": True}
-    encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
-    return encoded_jwt
-
-def get_or_create_guest_user(guest_id: Optional[str] = None) -> User:
-    """Get existing or create new guest user"""
+def get_or_create_guest_user(
+    response: Response, 
+    guest_cookie: Optional[str] = None
+) -> User:
+    """
+    Lấy thông tin người dùng từ cookie hoặc tạo một guest user mới.
+    """
+    guest_info = {}
+    guest_id = None
+    usage_count = 0
+    
+    # Try to parse the cookie if it exists
+    if guest_cookie:
+        try:
+            guest_info = json.loads(guest_cookie)
+            guest_id = guest_info.get("guest_id")
+            usage_count = guest_info.get("usage_count", 0)
+        except (json.JSONDecodeError, ValueError):
+            # Invalid cookie, we'll create a new one
+            pass
+    
+    # Create a new guest ID if needed
     if not guest_id:
         guest_id = f"guest_{uuid.uuid4()}"
+        
+    # Update and set the cookie
+    guest_info = {
+        "guest_id": guest_id,
+        "usage_count": usage_count,
+        "last_used": datetime.now().isoformat()
+    }
     
-    if guest_id not in guest_users:
-        guest_users[guest_id] = {
-            "usage_count": 0,
-            "last_used": datetime.now()
-        }
+    # Set/update the cookie
+    response.set_cookie(
+        key=GUEST_COOKIE_NAME,
+        value=json.dumps(guest_info),
+        max_age=GUEST_COOKIE_MAX_AGE,
+        httponly=True,
+        samesite="lax"
+    )
     
     return User(
         user_id=guest_id,
         email="guest@example.com",  # Placeholder email for guests
         is_guest=True,
-        usage_count=guest_users[guest_id]["usage_count"],
-        last_used=guest_users[guest_id]["last_used"]
+        usage_count=usage_count,
+        last_used=datetime.now()
     )
 
-def increment_guest_usage(guest_id: str) -> int:
-    """Increment usage count for a guest user and return new count"""
-    if guest_id in guest_users:
-        guest_users[guest_id]["usage_count"] += 1
-        guest_users[guest_id]["last_used"] = datetime.now()
-        return guest_users[guest_id]["usage_count"]
-    return 0
+def increment_guest_usage(response: Response, guest_cookie: Optional[str] = None) -> int:
+    """
+    Tăng số lần sử dụng của guest user.
+    """
+    guest_info = {}
+    usage_count = 0
+    guest_id = None
+    
+    if guest_cookie:
+        try:
+            guest_info = json.loads(guest_cookie)
+            guest_id = guest_info.get("guest_id")
+            usage_count = guest_info.get("usage_count", 0)
+        except (json.JSONDecodeError, ValueError):
+            guest_id = f"guest_{uuid.uuid4()}"
+    else:
+        guest_id = f"guest_{uuid.uuid4()}"
+    
+    usage_count += 1
+    
+    guest_info = {
+        "guest_id": guest_id,
+        "usage_count": usage_count,
+        "last_used": datetime.now().isoformat()
+    }
+    
+    response.set_cookie(
+        key=GUEST_COOKIE_NAME,
+        value=json.dumps(guest_info),
+        max_age=GUEST_COOKIE_MAX_AGE,
+        httponly=True,
+        samesite="lax"
+    )
+    
+    return usage_count
 
 def verify_firebase_token(id_token: str) -> dict:
-    """Verify a Firebase ID token and return the user data"""
+    """
+    Xác thực token từ Firebase.
+    """
     try:
-        # Verify the token with Firebase
         decoded_token = firebase_auth.verify_id_token(id_token)
         return decoded_token
     except Exception as e:
@@ -102,7 +145,9 @@ def verify_firebase_token(id_token: str) -> dict:
         )
 
 def get_user_from_firebase(firebase_user_id: str) -> dict:
-    """Get user data from Firebase"""
+    """
+    Lấy thông tin người dùng từ Firebase bằng user ID.
+    """
     try:
         user = firebase_auth.get_user(firebase_user_id)
         return user
@@ -119,7 +164,9 @@ def get_user_from_firebase(firebase_user_id: str) -> dict:
         )
 
 def format_firebase_user(firebase_user) -> User:
-    """Format Firebase user data to our User model"""
+    """
+    Format data từ Firebase user thành định dạng của ứng dụng.
+    """
     providers = [
         provider.provider_id for provider in getattr(firebase_user, "provider_data", [])
     ]
@@ -137,20 +184,23 @@ def format_firebase_user(firebase_user) -> User:
         created_at=datetime.fromtimestamp(firebase_user.user_metadata.creation_timestamp / 1000)
     )
 
-async def get_current_user(token: Optional[str] = Depends(oauth2_scheme)) -> User:
+async def get_current_user(
+    response: Response,
+    token: Optional[str] = Depends(oauth2_scheme),
+    guest_cookie: Optional[str] = Cookie(None, alias=GUEST_COOKIE_NAME)
+) -> User:
     """
-    Get the current user from token or create guest user if no token
+    Lấy thông tin người dùng hiện tại từ token hoặc cookie.
     """
     if not token:
-        # No token - create a new guest user
-        return get_or_create_guest_user()
+        # If no token, create or get a guest user
+        return get_or_create_guest_user(response, guest_cookie)
     
     try:
-        # First try to decode as our own JWT
+        # Try to decode JWT first
         try:
             payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
             user_id = payload.get("sub")
-            is_guest = payload.get("is_guest", False)
             
             if not user_id:
                 raise HTTPException(
@@ -159,168 +209,31 @@ async def get_current_user(token: Optional[str] = Depends(oauth2_scheme)) -> Use
                     headers={"WWW-Authenticate": "Bearer"},
                 )
             
-            if is_guest:
-                # This is a guest user with a valid token
-                return get_or_create_guest_user(user_id)
-            
-            # This is a regular user with a valid JWT
             firebase_user = get_user_from_firebase(user_id)
             return format_firebase_user(firebase_user)
         
+        # If JWT decode fails, try Firebase token
         except JWTError:
-            # Not our JWT, try to verify as Firebase token
-            try:
-                firebase_data = verify_firebase_token(token)
-                firebase_user = get_user_from_firebase(firebase_data["uid"])
-                return format_firebase_user(firebase_user)
-            except Exception:
-                # Not a Firebase token either, create a guest user
-                return get_or_create_guest_user()
+            firebase_data = verify_firebase_token(token)
+            firebase_user = get_user_from_firebase(firebase_data["uid"])
+            return format_firebase_user(firebase_user)
     
     except Exception as e:
         print(f"Authentication error: {e}")
-        return get_or_create_guest_user()
-
-@router.post("/register", status_code=status.HTTP_201_CREATED)
-async def register_user(user_data: UserCreate):
-    """
-    Register a new user with email and password.
-    """
-    try:
-        # Validate email format before sending to Firebase
-        if not user_data.email or "@" not in user_data.email:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid email format"
-            )
-            
-        # Validate password
-        if len(user_data.password) < 6:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Password must be at least 6 characters"
-            )
-        
-        # Create user in Firebase
-        user = firebase_auth.create_user(
-            email=user_data.email,
-            password=user_data.password,
-            display_name=user_data.display_name
-        )
-        
-        # Send email verification (optional)
-        # firebase_auth.generate_email_verification_link(user_data.email)
-        
-        # Create custom token for client
-        custom_token = create_custom_token(user.uid)
-        
-        # Create access token for our API
-        access_token = create_access_token({"sub": user.uid})
-        
-        return {
-            "message": "User registered successfully",
-            "user_id": user.uid,
-            "custom_token": custom_token,  # For Firebase client SDK
-            "access_token": access_token,  # For our API
-            "token_type": "bearer"
-        }
-    
-    except firebase_auth.EmailAlreadyExistsError:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Email already registered"
-        )
-    except firebase_auth.InvalidArgumentError as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid argument: {str(e)}"
-        )
-    except ValueError as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e)
-        )
-    except Exception as e:
-        print(f"Registration error: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Registration failed"
-        )
-
-@router.post("/login")
-async def login(
-    form_data: OAuth2PasswordRequestForm = Depends(),
-    user_data: Optional[UserLogin] = Body(None)
-):
-    """
-    Log in a user with email and password.
-    This endpoint is for server-side authentication with Swagger UI
-    """
-    try:
-        # Get email/password from either form data or JSON body
-        email = user_data.email if user_data else form_data.username
-        password = user_data.password if user_data else form_data.password
-        
-        # Validate email format
-        if not email or "@" not in email:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid email format"
-            )
-            
-        # Get user from Firebase by email (for server-side auth only)
-        user = firebase_auth.get_user_by_email(email)
-        
-        # Create custom token for client to sign in with Firebase
-        custom_token = create_custom_token(user.uid)
-        
-        # Create access token for our API
-        access_token = create_access_token({"sub": user.uid})
-        
-        return {
-            "message": "Login successful",
-            "user_id": user.uid,
-            "custom_token": custom_token,  # For Firebase client SDK
-            "access_token": access_token,  # For our API
-            "token_type": "bearer"
-        }
-    
-    except firebase_auth.UserNotFoundError:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid email or password"
-        )
-    except firebase_auth.InvalidArgumentError as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid argument: {str(e)}"
-        )
-    except ValueError as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e)
-        )
-    except Exception as e:
-        print(f"Login error: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Login failed"
-        )
+        # If authentication fails, fall back to guest user
+        return get_or_create_guest_user(response, guest_cookie)
 
 @router.post("/verify-token")
 async def verify_token(token_data: FirebaseToken):
     """
-    Verify a Firebase ID token and return user info along with an API access token.
+    Verify Firebase token và trả về thông tin người dùng.
     Use this endpoint after client-side authentication with Firebase.
     """
     try:
-        # Verify the Firebase ID token
         decoded_token = verify_firebase_token(token_data.id_token)
         
-        # Get the user from Firebase
         user = get_user_from_firebase(decoded_token["uid"])
         
-        # Create an access token for our API
         access_token = create_access_token({"sub": user.uid})
         
         return {
@@ -336,38 +249,6 @@ async def verify_token(token_data: FirebaseToken):
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid token"
         )
-
-@router.get("/google-auth-url")
-async def get_google_auth_url():
-    """
-    Get the Google OAuth URL for client-side authentication.
-    
-    This is for documentation purposes. In practice, you would use
-    Firebase's client SDK to handle Google authentication directly.
-    """
-    return {
-        "message": "For Google authentication, use Firebase Authentication SDK in your client application",
-        "note": "Firebase provides client SDKs for Web, iOS, and Android that handle the OAuth flow",
-    }
-
-@router.get("/guest-token")
-async def create_guest():
-    """
-    Create a new guest user and return a token
-    """
-    guest_user = get_or_create_guest_user()
-    token = create_guest_token(guest_user.user_id)
-    return {"access_token": token, "token_type": "bearer", "user_id": guest_user.user_id}
-
-@router.post("/logout")
-async def logout(current_user: User = Depends(get_current_user)):
-    """
-    Log out a user.
-    
-    Note: For Firebase Authentication, the actual logout happens client-side.
-    This endpoint is mainly for documentation and potential future server-side actions.
-    """
-    return {"message": "Logged out successfully"}
 
 @router.get("/profile", response_model=User)
 async def get_profile(current_user: User = Depends(get_current_user)):

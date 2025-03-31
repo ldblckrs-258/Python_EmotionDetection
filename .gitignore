@@ -70,5 +70,6 @@ mongodb_data/
 .huggingface/
 .cache/
 .transformers_cache/
+.env.prod
 
 /*.json

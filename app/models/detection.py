@@ -40,7 +40,11 @@ class DetectionResponse(DetectionBase):
                     "emotions": [
                         {"emotion": "happy", "score": 0.92, "percentage": 92.0},
                         {"emotion": "sad", "score": 0.05, "percentage": 5.0},
-                        {"emotion": "angry", "score": 0.03, "percentage": 3.0}
+                        {"emotion": "angry", "score": 0.03, "percentage": 3.0},
+                        {"emotion": "surprised", "score": 0.00, "percentage": 0.0},
+                        {"emotion": "disgusted", "score": 0.00, "percentage": 0.0},
+                        {"emotion": "neutral", "score": 0.00, "percentage": 0.0},
+                        {"emotion": "fear", "score": 0.00, "percentage": 0.0},
                     ],
                     "face_detected": True,
                     "processing_time": 0.235
