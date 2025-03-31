@@ -15,7 +15,7 @@ Base URL: `http://vm.ldblckrs.id.vn:2508` (Backend server deployed on Azure VM)
 API hỗ trợ 2 phương thức xác thực:
 
 1. **Xác thực qua Firebase Client SDK**: Client sử dụng Firebase SDK để xác thực, sau đó gửi ID token đến backend
-2. **Sử dụng dưới dạng khách (Guest)**: Giới hạn 3 lần sử dụng tính năng nhận diện cảm xúc
+2. **Sử dụng dưới dạng khách (Guest)**: Hệ thống sẽ tự động tạo và sử dụng cookie để theo dõi số lần sử dụng của người dùng khách, giới hạn 3 lần sử dụng tính năng nhận diện cảm xúc
 
 ### Endpoint xác thực
 
@@ -58,23 +58,11 @@ Content-Type: application/json
 
 - `401 Unauthorized`: Token không hợp lệ
 
-#### 2. Lấy token cho guest (không đăng nhập)
+#### 2. Sử dụng chế độ khách (Guest)
 
-**Request:**
+Đối với chế độ khách, không cần gọi endpoint cụ thể. Hệ thống sẽ tự động tạo và quản lý cookie khi người dùng truy cập các API mà không có token xác thực. Guest users được giới hạn 3 lần sử dụng tính năng nhận diện cảm xúc.
 
-```http
-GET /auth/guest-token
-```
-
-**Response:**
-
-```json
-{
-  "access_token": "guest_jwt_token",
-  "token_type": "bearer",
-  "user_id": "guest_id"
-}
-```
+**Lưu ý:** API sử dụng cookie HTTP-only có tên `guest_usage_info` để theo dõi thông tin người dùng khách, bao gồm ID và số lần sử dụng. Cookie này có thời hạn 30 ngày.
 
 #### 3. Lấy thông tin profile
 
@@ -177,7 +165,7 @@ file: [binary image data]
 - `400 Bad Request`: Không upload file hoặc file không phải là hình ảnh
 - `400 Bad Request`: Kích thước file quá lớn (giới hạn 5MB)
 - `400 Bad Request`: Định dạng file không được hỗ trợ
-- `403 Forbidden`: Guest user đã vượt quá giới hạn sử dụng
+- `403 Forbidden`: Guest user đã vượt quá giới hạn sử dụng (3 lần)
 - `500 Internal Server Error`: Lỗi xử lý hình ảnh hoặc phát hiện cảm xúc
 
 #### 2. Lấy lịch sử phát hiện cảm xúc
@@ -188,6 +176,10 @@ file: [binary image data]
 GET /api/history?skip=0&limit=10
 Authorization: Bearer {access_token}
 ```
+
+Query parameters:
+- `skip`: Số bản ghi bỏ qua (dùng cho phân trang, mặc định là 0)
+- `limit`: Số bản ghi tối đa trả về (mặc định là 10)
 
 **Response:**
 
@@ -229,7 +221,7 @@ Authorization: Bearer {access_token}
 
 **Response:**
 
-```http
+```json
 {
   "detection_id": "unique_detection_id",
   "user_id": "user_id",
@@ -259,6 +251,10 @@ Authorization: Bearer {access_token}
 }
 ```
 
+**Lỗi có thể gặp:**
+- `404 Not Found`: Detection ID không tồn tại
+- `403 Forbidden`: Detection không thuộc về người dùng hiện tại
+
 #### 4. Xóa một lần phát hiện cảm xúc
 
 **Request:**
@@ -273,6 +269,11 @@ Authorization: Bearer {access_token}
 ```
 Status: 204 No Content
 ```
+
+**Lỗi có thể gặp:**
+- `404 Not Found`: Detection ID không tồn tại
+- `403 Forbidden`: Detection không thuộc về người dùng hiện tại
+- `500 Internal Server Error`: Lỗi khi xóa detection
 
 ## Hướng dẫn tích hợp Firebase Authentication (Client-side) cho Django
 
