@@ -4,86 +4,22 @@
 
 API Emotion Detection cung cấp các endpoint để:
 
-- Xác thực người dùng (đăng ký, đăng nhập, xác thực token)
+- Xác thực người dùng thông qua Firebase Authentication
 - Phát hiện cảm xúc từ hình ảnh khuôn mặt
 - Quản lý lịch sử phát hiện cảm xúc
 
-Base URL: `http://localhost:2508` (mặc định cho môi trường phát triển)
+Base URL: `http://vm.ldblckrs.id.vn:2508` (Backend server deployed on Azure VM)
 
 ## Xác thực (Authentication)
 
-API hỗ trợ 3 phương thức xác thực:
+API hỗ trợ 2 phương thức xác thực:
 
-1. **Xác thực qua Firebase** (khuyến nghị): Client sử dụng Firebase SDK để xác thực, sau đó gửi ID token đến backend
-2. **Xác thực trực tiếp thông qua API**: Sử dụng email/password hoặc Google OAuth
-3. **Sử dụng dưới dạng khách (Guest)**: Giới hạn 3 lần sử dụng tính năng nhận diện cảm xúc
+1. **Xác thực qua Firebase Client SDK**: Client sử dụng Firebase SDK để xác thực, sau đó gửi ID token đến backend
+2. **Sử dụng dưới dạng khách (Guest)**: Giới hạn 3 lần sử dụng tính năng nhận diện cảm xúc
 
 ### Endpoint xác thực
 
-#### 1. Đăng ký tài khoản
-
-**Request:**
-
-```http
-POST /auth/register
-Content-Type: application/json
-
-{
-  "email": "user@example.com",
-  "password": "password123",
-  "display_name": "John Doe"
-}
-```
-
-**Response:**
-
-```json
-{
-  "message": "User registered successfully",
-  "user_id": "firebase_user_id",
-  "custom_token": "firebase_custom_token",
-  "access_token": "jwt_access_token",
-  "token_type": "bearer"
-}
-```
-
-**Lỗi có thể gặp:**
-
-- `400 Bad Request`: Email đã tồn tại hoặc định dạng không hợp lệ
-- `400 Bad Request`: Mật khẩu phải có ít nhất 6 ký tự
-
-#### 2. Đăng nhập
-
-**Request:**
-
-```http
-POST /auth/login
-Content-Type: application/json
-
-{
-  "email": "user@example.com",
-  "password": "password123"
-}
-```
-
-**Response:**
-
-```json
-{
-  "message": "Login successful",
-  "user_id": "firebase_user_id",
-  "custom_token": "firebase_custom_token",
-  "access_token": "jwt_access_token",
-  "token_type": "bearer"
-}
-```
-
-**Lỗi có thể gặp:**
-
-- `401 Unauthorized`: Email hoặc mật khẩu không hợp lệ
-- `400 Bad Request`: Định dạng email không hợp lệ
-
-#### 3. Xác thực Firebase ID Token
+#### 1. Xác thực Firebase ID Token
 
 **Request:**
 
@@ -122,7 +58,7 @@ Content-Type: application/json
 
 - `401 Unauthorized`: Token không hợp lệ
 
-#### 4. Lấy token cho guest (không đăng nhập)
+#### 2. Lấy token cho guest (không đăng nhập)
 
 **Request:**
 
@@ -140,24 +76,7 @@ GET /auth/guest-token
 }
 ```
 
-#### 5. Đăng xuất
-
-**Request:**
-
-```http
-POST /auth/logout
-Authorization: Bearer {access_token}
-```
-
-**Response:**
-
-```json
-{
-  "message": "Logged out successfully"
-}
-```
-
-#### 6. Lấy thông tin profile
+#### 3. Lấy thông tin profile
 
 **Request:**
 
@@ -183,7 +102,7 @@ Authorization: Bearer {access_token}
 }
 ```
 
-#### 7. Lấy thông tin sử dụng
+#### 4. Lấy thông tin sử dụng
 
 **Request:**
 
@@ -256,6 +175,8 @@ file: [binary image data]
 **Lỗi có thể gặp:**
 
 - `400 Bad Request`: Không upload file hoặc file không phải là hình ảnh
+- `400 Bad Request`: Kích thước file quá lớn (giới hạn 5MB)
+- `400 Bad Request`: Định dạng file không được hỗ trợ
 - `403 Forbidden`: Guest user đã vượt quá giới hạn sử dụng
 - `500 Internal Server Error`: Lỗi xử lý hình ảnh hoặc phát hiện cảm xúc
 
@@ -308,7 +229,7 @@ Authorization: Bearer {access_token}
 
 **Response:**
 
-```json
+```http
 {
   "detection_id": "unique_detection_id",
   "user_id": "user_id",
@@ -353,164 +274,359 @@ Authorization: Bearer {access_token}
 Status: 204 No Content
 ```
 
-## Hướng dẫn tích hợp Auth
+## Hướng dẫn tích hợp Firebase Authentication (Client-side) cho Django
 
-### Phương án 1: Firebase Client SDK (Khuyến nghị)
+### 1. Cài đặt các gói cần thiết
 
-1. **Khởi tạo Firebase trong frontend**
+Cài đặt các gói Python cần thiết cho dự án Django của bạn:
 
-```javascript
-const firebaseConfig = {
-  apiKey: "AIzaSyCihN1jBnbMocE3kcW4is_H6_cqpeFzWqA",
-  authDomain: "emotiondetection-743bb.firebaseapp.com",
-  projectId: "emotiondetection-743bb",
-  storageBucket: "emotiondetection-743bb.firebasestorage.app",
-  messagingSenderId: "479535349810",
-  appId: "1:479535349810:web:01841d594a247d24e83c2b",
-  measurementId: "G-3V67P994LC",
-}
-
-firebase.initializeApp(firebaseConfig)
+```bash
+pip install firebase-admin
+pip install django-cors-headers
+pip install requests
 ```
 
-2. **Đăng ký người dùng mới**
+Thêm các ứng dụng vào `INSTALLED_APPS` trong file `settings.py`:
 
-```javascript
-const auth = firebase.auth()
-const result = await auth.createUserWithEmailAndPassword(email, password)
-const user = result.user
-await user.updateProfile({ displayName: displayName })
+```python
+INSTALLED_APPS = [
+    # ...các ứng dụng mặc định của Django
+    'corsheaders',
+    'your_app_name',  # Ứng dụng của bạn
+]
+
+# Thêm CORS middleware
+MIDDLEWARE = [
+    'corsheaders.middleware.CorsMiddleware',
+    # ...các middleware khác
+]
+
+# Cấu hình CORS
+CORS_ALLOW_ALL_ORIGINS = True  # Trong môi trường production, nên chỉ định cụ thể các domain được phép
 ```
 
-3. **Đăng nhập**
+### 2. Khởi tạo Firebase Admin SDK trong Django
 
-```javascript
-// Email/Password
-await auth.signInWithEmailAndPassword(email, password)
+Tạo file `firebase.py` trong ứng dụng của bạn:
 
-// Google OAuth
-const provider = new firebase.auth.GoogleAuthProvider()
-await auth.signInWithPopup(provider)
+```python
+import firebase_admin
+from firebase_admin import credentials, auth
+import os
+
+# Đường dẫn đến file service account key của Firebase
+FIREBASE_SERVICE_ACCOUNT_KEY = os.environ.get('FIREBASE_SERVICE_ACCOUNT_KEY', 'path/to/firebase-service-account.json')
+
+# Khởi tạo Firebase Admin SDK nếu chưa được khởi tạo
+if not firebase_admin._apps:
+    cred = credentials.Certificate(FIREBASE_SERVICE_ACCOUNT_KEY)
+    firebase_admin.initialize_app(cred)
+
+def verify_firebase_token(id_token):
+    """
+    Xác thực Firebase ID token và trả về thông tin người dùng
+    """
+    try:
+        decoded_token = auth.verify_id_token(id_token)
+        return decoded_token
+    except Exception as e:
+        print(f"Lỗi xác thực Firebase token: {e}")
+        return None
 ```
 
-4. **Xác thực với API**
+### 3. Tạo middleware xác thực token
 
-```javascript
-// Sau khi đăng nhập thành công với Firebase
-const idToken = await firebase.auth().currentUser.getIdToken()
+Tạo file `middleware.py` trong ứng dụng của bạn:
 
-// Gửi token đến API để xác thực và nhận API token
-const response = await fetch("http://localhost:2508/auth/verify-token", {
-  method: "POST",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({ id_token: idToken }),
-})
+```python
+from django.http import JsonResponse
+from .firebase import verify_firebase_token
+import json
 
-const authData = await response.json()
-// Lưu authData.access_token để sử dụng cho các API call khác
-localStorage.setItem("api_token", authData.access_token)
+class FirebaseAuthMiddleware:
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        # Bỏ qua xác thực cho các endpoint không yêu cầu xác thực
+        excluded_paths = ['/api/docs', '/api/schema', '/admin', '/auth/guest-token']
+        if any(request.path.startswith(path) for path in excluded_paths):
+            return self.get_response(request)
+
+        # Lấy token từ header
+        auth_header = request.headers.get('Authorization')
+        if not auth_header or not auth_header.startswith('Bearer '):
+            return JsonResponse({'error': 'Không có token xác thực'}, status=401)
+
+        token = auth_header.split(' ')[1]
+        
+        # Xác thực token
+        user_data = verify_firebase_token(token)
+        if not user_data:
+            return JsonResponse({'error': 'Token không hợp lệ'}, status=401)
+        
+        # Lưu thông tin người dùng vào request để sử dụng trong views
+        request.firebase_user = user_data
+        
+        return self.get_response(request)
 ```
 
-5. **Gọi API với token**
+Thêm middleware vào `settings.py`:
 
-```javascript
-// Ví dụ upload ảnh để phát hiện cảm xúc
-const formData = new FormData()
-formData.append("file", imageFile)
-
-const response = await fetch("http://localhost:2508/api/detect", {
-  method: "POST",
-  headers: {
-    Authorization: `Bearer ${localStorage.getItem("api_token")}`,
-  },
-  body: formData,
-})
-
-const result = await response.json()
-console.log("Emotion detection result:", result)
+```python
+MIDDLEWARE = [
+    # ...các middleware khác
+    'your_app_name.middleware.FirebaseAuthMiddleware',
+]
 ```
 
-### Phương án 2: Guest Mode (Không đăng nhập)
+### 4. Tạo views cho xác thực và xử lý API
 
-```javascript
-// Lấy guest token
-const response = await fetch("http://localhost:2508/auth/guest-token")
-const data = await response.json()
-localStorage.setItem("guest_token", data.access_token)
+Tạo file `views.py` trong ứng dụng của bạn:
 
-// Sử dụng guest token để gọi API
-const formData = new FormData()
-formData.append("file", imageFile)
+```python
+from django.http import JsonResponse
+from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.http import require_http_methods
+import json
+from firebase_admin import auth
+from .firebase import verify_firebase_token
+import requests
 
-const detectResponse = await fetch("http://localhost:2508/api/detect", {
-  method: "POST",
-  headers: {
-    Authorization: `Bearer ${localStorage.getItem("guest_token")}`,
-  },
-  body: formData,
-})
+@csrf_exempt
+@require_http_methods(["POST"])
+def verify_token(request):
+    """
+    Xác thực Firebase ID token và trả về access token cho API
+    """
+    try:
+        data = json.loads(request.body)
+        id_token = data.get('id_token')
+        
+        if not id_token:
+            return JsonResponse({'error': 'Thiếu ID token'}, status=400)
+        
+        # Xác thực token với Firebase
+        decoded_token = verify_firebase_token(id_token)
+        
+        if not decoded_token:
+            return JsonResponse({'error': 'Token không hợp lệ'}, status=401)
+        
+        # Lấy thông tin người dùng từ Firebase
+        user = auth.get_user(decoded_token['uid'])
+        
+        # Tạo access token cho API của bạn (ví dụ sử dụng JWT)
+        # Trong ví dụ này, chúng ta sẽ giả vờ tạo token bằng cách gọi đến API Emotion Detection
+        response = requests.post(
+            "http://localhost:2508/auth/verify-token",
+            json={"id_token": id_token}
+        )
+        
+        if response.status_code != 200:
+            return JsonResponse({'error': 'Lỗi xác thực với API'}, status=500)
+        
+        return JsonResponse(response.json())
+    
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
 
-// Guest mode giới hạn 3 lần sử dụng
+@csrf_exempt
+@require_http_methods(["GET"])
+def guest_token(request):
+    """
+    Lấy guest token từ API Emotion Detection
+    """
+    try:
+        response = requests.get("http://localhost:2508/auth/guest-token")
+        
+        if response.status_code != 200:
+            return JsonResponse({'error': 'Lỗi lấy guest token'}, status=500)
+        
+        return JsonResponse(response.json())
+    
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+@require_http_methods(["GET"])
+def profile(request):
+    """
+    Lấy thông tin profile của người dùng đã xác thực
+    """
+    if not hasattr(request, 'firebase_user'):
+        return JsonResponse({'error': 'Không có thông tin người dùng'}, status=401)
+    
+    user_id = request.firebase_user.get('uid')
+    
+    try:
+        # Gọi API Emotion Detection để lấy thông tin profile
+        auth_header = request.headers.get('Authorization')
+        response = requests.get(
+            "http://localhost:2508/auth/profile",
+            headers={"Authorization": auth_header}
+        )
+        
+        if response.status_code != 200:
+            return JsonResponse({'error': 'Lỗi lấy thông tin profile'}, status=500)
+        
+        return JsonResponse(response.json())
+    
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+@require_http_methods(["POST"])
+def detect_emotion(request):
+    """
+    Gửi ảnh để phát hiện cảm xúc
+    """
+    if not hasattr(request, 'firebase_user'):
+        return JsonResponse({'error': 'Không có thông tin người dùng'}, status=401)
+    
+    try:
+        # Lấy file ảnh từ request
+        if 'file' not in request.FILES:
+            return JsonResponse({'error': 'Không có file ảnh'}, status=400)
+        
+        image_file = request.FILES['file']
+        
+        # Gửi file đến API Emotion Detection
+        auth_header = request.headers.get('Authorization')
+        
+        files = {'file': (image_file.name, image_file.read(), image_file.content_type)}
+        response = requests.post(
+            "http://localhost:2508/api/detect",
+            headers={"Authorization": auth_header},
+            files=files
+        )
+        
+        if response.status_code != 200:
+            error_data = response.json()
+            return JsonResponse({'error': error_data.get('detail', 'Lỗi phát hiện cảm xúc')}, status=response.status_code)
+        
+        return JsonResponse(response.json())
+    
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
 ```
 
-## Mô hình dữ liệu
+### 5. Cấu hình URL trong `urls.py`:
 
-### User
+```python
+from django.urls import path
+from . import views
 
-```json
-{
-  "user_id": "string",         // Firebase UID hoặc guest ID
-  "email": "string",           // Email người dùng
-  "display_name": "string",    // Tên hiển thị (có thể null)
-  "photo_url": "string",       // URL ảnh đại diện (có thể null)
-  "is_guest": boolean,         // Có phải là guest không
-  "is_email_verified": boolean, // Email đã xác thực chưa
-  "providers": ["string"],     // Các provider xác thực (password, google.com, etc.)
-  "usage_count": number,       // Số lần sử dụng
-  "last_used": "string",       // Thời gian sử dụng gần nhất (ISO datetime)
-  "created_at": "string"       // Thời gian tạo tài khoản (ISO datetime)
-}
+urlpatterns = [
+    path('auth/verify-token', views.verify_token, name='verify_token'),
+    path('auth/guest-token', views.guest_token, name='guest_token'),
+    path('auth/profile', views.profile, name='profile'),
+    path('api/detect', views.detect_emotion, name='detect_emotion'),
+    # Thêm các URL khác nếu cần
+]
 ```
 
-### EmotionScore
+### 6. Tích hợp Firebase vào template frontend
 
-```json
-{
-  "emotion": "string",     // Tên cảm xúc (happy, sad, angry, etc.)
-  "score": float,          // Điểm từ 0-1
-  "percentage": float      // Giá trị phần trăm (0-100)
-}
+Thêm Firebase SDK vào template base của Django:
+
+```html
+<head>
+    <title>{% block title %}Emotion Detection{% endblock %}</title>
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-auth-compat.js"></script>
+    
+    <script>
+        // Cấu hình Firebase
+        const firebaseConfig = {
+            apiKey: "AIzaSyCihN1jBnbMocE3kcW4is_H6_cqpeFzWqA",
+            authDomain: "emotiondetection-743bb.firebaseapp.com",
+            projectId: "emotiondetection-743bb",
+            storageBucket: "emotiondetection-743bb.firebasestorage.app",
+            messagingSenderId: "479535349810",
+            appId: "1:479535349810:web:01841d594a247d24e83c2b",
+            measurementId: "G-3V67P994LC",
+        };
+        
+        // Khởi tạo Firebase
+        firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
+        
+        // Xử lý trạng thái đăng nhập
+        auth.onAuthStateChanged(async (user) => {
+            if (user) {
+                // Người dùng đã đăng nhập
+                const idToken = await user.getIdToken();
+                
+                // Gửi token đến API để xác thực
+                const response = await fetch("/auth/verify-token", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ id_token: idToken }),
+                });
+                
+                const data = await response.json();
+                
+                // Lưu token vào localStorage
+                localStorage.setItem("api_token", data.access_token);
+                
+                // Cập nhật UI
+                document.getElementById("user-info").innerText = user.displayName || user.email;
+                document.getElementById("login-container").style.display = "none";
+                document.getElementById("user-container").style.display = "block";
+            } else {
+                // Người dùng chưa đăng nhập
+                localStorage.removeItem("api_token");
+                document.getElementById("login-container").style.display = "block";
+                document.getElementById("user-container").style.display = "none";
+            }
+        });
+        
+        // Hàm đăng nhập
+        async function dangNhap() {
+            const email = document.getElementById("email").value;
+            const password = document.getElementById("password").value;
+            
+            try {
+                await auth.signInWithEmailAndPassword(email, password);
+            } catch (error) {
+                alert("Lỗi đăng nhập: " + error.message);
+            }
+        }
+        
+        // Hàm đăng nhập bằng Google
+        async function dangNhapGoogle() {
+            try {
+                const provider = new firebase.auth.GoogleAuthProvider();
+                await auth.signInWithPopup(provider);
+            } catch (error) {
+                alert("Lỗi đăng nhập Google: " + error.message);
+            }
+        }
+        
+        // Hàm đăng xuất
+        async function dangXuat() {
+            try {
+                await auth.signOut();
+                alert("Đã đăng xuất thành công");
+            } catch (error) {
+                alert("Lỗi đăng xuất: " + error.message);
+            }
+        }
+        
+        // Hàm chế độ khách
+        async function dungCheDoKhach() {
+            try {
+                const response = await fetch("/auth/guest-token");
+                const data = await response.json();
+                
+                localStorage.setItem("guest_token", data.access_token);
+                alert("Đã kích hoạt chế độ khách");
+                
+                // Chuyển đến trang chính
+                window.location.href = "/";
+            } catch (error) {
+                alert("Lỗi chế độ khách: " + error.message);
+            }
+        }
+    </script>
+</head>
 ```
-
-### DetectionResult
-
-```json
-{
-  "emotions": [EmotionScore],  // Danh sách các cảm xúc phát hiện được
-  "face_detected": boolean,    // Có phát hiện được khuôn mặt hay không
-  "processing_time": float     // Thời gian xử lý (giây)
-}
-```
-
-### DetectionResponse
-
-```json
-{
-  "detection_id": "string",          // ID duy nhất cho lần phát hiện
-  "user_id": "string",               // ID người dùng
-  "timestamp": "string",             // Thời gian phát hiện (ISO datetime)
-  "image_url": "string",             // URL hình ảnh đã lưu trên Cloudinary
-  "detection_results": DetectionResult  // Kết quả phát hiện cảm xúc
-}
-```
-
-## Headers yêu cầu
-
-- `Content-Type: application/json` cho các request JSON
-- `Content-Type: multipart/form-data` cho upload file
-- `Authorization: Bearer {token}` cho các API yêu cầu xác thực
-
-## Giới hạn sử dụng
-
-- Guest users: Giới hạn 3 lần sử dụng API phát hiện cảm xúc
-- Authenticated users: Không giới hạn

@@ -59,7 +59,7 @@ pip install -r requirements.txt
 3. Run the application:
 
 ```bash
-uvicorn app.main:app --reload
+uvicorn app.main:app --reload --port 2508
 ```
 
 The API will be available at `http://localhost:2508`.
@@ -96,3 +96,41 @@ Once the application is running, you can access the interactive API documentatio
 - `GET /api/history` - Get user's detection history
 - `GET /api/history/{id}` - Get details of a specific detection
 - `DELETE /api/history/{id}` - Delete a specific detection record
+
+# Model Information
+The model used for emotion detection is `dima806/facial_emotions_image_detection` from Hugging Face. It is a pre-trained model that can classify emotions from facial images.
+
+## Classification report
+```python
+              precision    recall  f1-score   support
+
+         sad     0.8394    0.8632    0.8511      3596
+     disgust     0.9909    1.0000    0.9954      3596
+       angry     0.9022    0.9035    0.9028      3595
+     neutral     0.8752    0.8626    0.8689      3595
+        fear     0.8788    0.8532    0.8658      3596
+    surprise     0.9476    0.9449    0.9463      3596
+       happy     0.9302    0.9372    0.9336      3596
+
+    accuracy                         0.9092     25170
+   macro avg     0.9092    0.9092    0.9091     25170
+weighted avg     0.9092    0.9092    0.9091     25170
+```
+
+## Label Mapping
+```python
+{
+    0: "sad",
+    1: "disgust",
+    2: "angry",
+    3: "neutral",
+    4: "fear",
+    5: "surprise",
+    6: "happy"
+}
+```
+
+## More
+- Returns facial emotion with about 91% accuracy based on facial human image.
+- The model is trained on the FER2013 dataset, which contains a large number of facial images labeled with different emotions. The model uses a Vision Transformer (ViT) architecture for image classification.
+- See https://www.kaggle.com/code/dima806/facial-emotions-image-detection-vit for more details. 

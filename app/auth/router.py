@@ -1,16 +1,13 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Header, Request, Cookie, Body
+from fastapi import APIRouter, Depends, HTTPException, status, Body
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-from fastapi.responses import JSONResponse, RedirectResponse
-from typing import Optional, Dict, List
+from typing import Optional, Dict
 from datetime import datetime, timedelta
 import firebase_admin
 from firebase_admin import credentials, auth as firebase_auth
 from jose import jwt, JWTError
-import json
 import uuid
-import requests
 from app.core.config import settings
-from app.models.user import User, UserInDB, UserCreate, UserLogin, FirebaseToken
+from app.models.user import User, UserCreate, UserLogin, FirebaseToken
 
 router = APIRouter()
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login", auto_error=False)
@@ -251,23 +248,28 @@ async def register_user(user_data: UserCreate):
         )
 
 @router.post("/login")
-async def login(user_data: UserLogin):
+async def login(
+    form_data: OAuth2PasswordRequestForm = Depends(),
+    user_data: Optional[UserLogin] = Body(None)
+):
     """
     Log in a user with email and password.
-    
-    Note: This is a server-side login. For client-side login,
-    use Firebase Authentication directly in your frontend.
+    This endpoint is for server-side authentication with Swagger UI
     """
     try:
+        # Get email/password from either form data or JSON body
+        email = user_data.email if user_data else form_data.username
+        password = user_data.password if user_data else form_data.password
+        
         # Validate email format
-        if not user_data.email or "@" not in user_data.email:
+        if not email or "@" not in email:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Invalid email format"
             )
             
         # Get user from Firebase by email (for server-side auth only)
-        user = firebase_auth.get_user_by_email(user_data.email)
+        user = firebase_auth.get_user_by_email(email)
         
         # Create custom token for client to sign in with Firebase
         custom_token = create_custom_token(user.uid)

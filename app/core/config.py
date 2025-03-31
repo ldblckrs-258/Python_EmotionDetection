@@ -25,8 +25,8 @@ class Settings(BaseSettings):
     # Firebase settings
     FIREBASE_SERVICE_ACCOUNT_KEY: str = os.getenv("FIREBASE_SERVICE_ACCOUNT_KEY", "")
     
-    # Hugging Face model
-    HUGGINGFACE_MODEL: str = os.getenv("HUGGINGFACE_MODEL", "nateraw/vit-age-classifier")
+    # Hugging Face model - use a proper emotion detection model
+    HUGGINGFACE_MODEL: str = os.getenv("HUGGINGFACE_MODEL", "dima806/facial_emotions_image_detection")
     
     # Security settings
     SECRET_KEY: str = os.getenv("SECRET_KEY", "")

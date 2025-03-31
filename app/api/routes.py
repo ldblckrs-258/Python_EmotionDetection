@@ -5,6 +5,7 @@ from app.models.detection import DetectionCreate, DetectionResponse
 from app.auth.router import get_current_user, increment_guest_usage
 from app.models.user import User
 from app.core.config import settings
+from app.services.storage import get_detections_by_user, get_detection, delete_detection
 
 router = APIRouter()
 
@@ -49,8 +50,7 @@ async def get_detection_history(
     """
     Retrieve the detection history for the current user.
     """
-    # This will be implemented with database connection later
-    return []
+    return await get_detections_by_user(current_user.user_id, skip, limit)
 
 @router.get("/history/{detection_id}", response_model=DetectionResponse)
 async def get_detection_detail(
@@ -60,16 +60,49 @@ async def get_detection_detail(
     """
     Retrieve a specific detection by ID.
     """
-    # This will be implemented with database connection later
-    return None
+    detection = await get_detection(detection_id)
+    if not detection:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Detection with ID {detection_id} not found"
+        )
+    
+    # Check if the detection belongs to the current user
+    if detection.user_id != current_user.user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You don't have permission to access this detection"
+        )
+        
+    return detection
 
 @router.delete("/history/{detection_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_detection(
+async def delete_detection_endpoint(
     detection_id: str,
     current_user: User = Depends(get_current_user)
 ):
     """
     Delete a specific detection by ID.
     """
-    # This will be implemented with database connection later
+    detection = await get_detection(detection_id)
+    if not detection:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Detection with ID {detection_id} not found"
+        )
+    
+    # Check if the detection belongs to the current user
+    if detection.user_id != current_user.user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You don't have permission to delete this detection"
+        )
+    
+    success = await delete_detection(detection_id)
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to delete detection"
+        )
+    
     return None
