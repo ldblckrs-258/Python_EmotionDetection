@@ -38,7 +38,7 @@ class User(BaseModel):
 class UserInDB(User):
     """User model for database operations"""
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "user_id": "firebase_user_id",
                 "email": "user@example.com",

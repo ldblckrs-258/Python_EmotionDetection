@@ -1,34 +1,36 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.exception_handlers import http_exception_handler
 import uvicorn
-import logging
-import os
 from fastapi.openapi.utils import get_openapi
 from contextlib import asynccontextmanager
 
 from app.core.config import settings
+from app.core.logging import get_logger
+from app.core.middlewares import ErrorHandlingMiddleware
+from app.core.exceptions import AppBaseException
 from app.api.routes import router as api_router
 from app.auth.router import router as auth_router
 from app.services.database import connect_to_mongodb, close_mongodb_connection
 
-# Logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
+favicon_path = "./favicon.ico"
 
-# Lifespan context manager for startup and shutdown events
+# Initialize logger
+logger = get_logger("main")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: connect to MongoDB
-    logging.info("Starting up MongoDB connection")
+
+    logger.info("Starting up MongoDB connection")
     await connect_to_mongodb()
     yield
-    # Shutdown: close MongoDB connection
-    logging.info("Shutting down MongoDB connection")
+
+    logger.info("Shutting down MongoDB connection")
     await close_mongodb_connection()
 
-# Custom OpenAPI schema to hide specific endpoints in Swagger UI
+
 def custom_openapi():
     if app.openapi_schema:
         return app.openapi_schema
@@ -39,24 +41,11 @@ def custom_openapi():
         description="API for detecting emotions from facial images",
         routes=app.routes,
     )
-    
-    # Get all paths in the OpenAPI schema
-    paths = openapi_schema["paths"]
-    
-    # Hide login and register endpoints from Swagger UI
-    paths_to_hide = ["/auth/login", "/auth/register"]
-    
-    for path in paths_to_hide:
-        if path in paths:
-            # Add x-hidden flag to hide the endpoint
-            for method in paths[path]:
-                if "x-hidden" not in paths[path][method]:
-                    paths[path][method]["x-hidden"] = True
-    
+
     app.openapi_schema = openapi_schema
     return app.openapi_schema
 
-# Initialize the FastAPI app with lifespan
+
 app = FastAPI(
     title=settings.APP_NAME,
     description="API for detecting emotions from facial images",
@@ -70,13 +59,13 @@ app.openapi = custom_openapi
 
 # Add CORS middleware
 if hasattr(settings, 'CORS_ORIGINS') and settings.CORS_ORIGINS:
-    # In production, use specific origins from settings
+
     origins = settings.CORS_ORIGINS.split(',')
-    logging.info(f"CORS enabled for specific origins: {origins}")
+    logger.info(f"CORS enabled for specific origins: {origins}")
 else:
-    # In development, allow all origins
+    # Development
     origins = ["*"]
-    logging.info("CORS enabled for all origins (development mode)")
+    logger.info("CORS enabled for all origins (development mode)")
 
 app.add_middleware(
     CORSMiddleware,
@@ -86,7 +75,23 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include routers
+# Add error handling middleware - must be added after CORS middleware
+# so CORS is applied before error handling
+app.add_middleware(ErrorHandlingMiddleware)
+
+# Register exception handlers
+@app.exception_handler(AppBaseException)
+async def app_exception_handler(request: Request, exc: AppBaseException):
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "success": False,
+            "message": exc.message,
+            "details": exc.details
+        }
+    )
+
+# Routes
 app.include_router(auth_router, prefix="/auth", tags=["Authentication"])
 app.include_router(api_router, prefix=settings.API_PREFIX, tags=["Emotion Detection"])
 
@@ -99,6 +104,11 @@ async def root():
         "docs": f"{scheme}://{settings.HOST}:{settings.PORT}/docs",
         "redoc": f"{scheme}://{settings.HOST}:{settings.PORT}/redoc"
     }
+    
+@app.get('/favicon.ico', include_in_schema=False)
+async def favicon():
+    return FileResponse(favicon_path)
+
 
 if __name__ == "__main__":
     # Check if HTTPS is enabled
@@ -112,9 +122,9 @@ if __name__ == "__main__":
                 "ssl_keyfile": ssl_keyfile,
                 "ssl_certfile": ssl_certfile
             })
-            logging.info(f"HTTPS enabled with cert: {ssl_certfile} and key: {ssl_keyfile}")
+            logger.info(f"HTTPS enabled with cert: {ssl_certfile} and key: {ssl_keyfile}")
         else:
-            logging.warning("HTTPS_ENABLED is True but SSL_KEYFILE or SSL_CERTFILE not provided")
+            logger.warning("HTTPS_ENABLED is True but SSL_KEYFILE or SSL_CERTFILE not provided")
     
     uvicorn.run(
         "app.main:app",

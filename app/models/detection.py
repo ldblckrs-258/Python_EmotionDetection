@@ -30,7 +30,7 @@ class DetectionResponse(DetectionBase):
     detection_results: DetectionResult
     
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "detection_id": "123456abcdef",
                 "user_id": "user123",

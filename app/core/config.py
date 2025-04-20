@@ -45,6 +45,11 @@ class Settings(BaseSettings):
     # Guest usage limits
     GUEST_MAX_USAGE: int = int(os.getenv("GUEST_MAX_USAGE", "3"))
     
+    # Logging settings
+    LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
+    LOG_TO_FILE: bool = os.getenv("LOG_TO_FILE", "True").lower() == "true"
+    LOG_FORMAT: str = os.getenv("LOG_FORMAT", "json")
+    
     class Config:
         env_file = ".env"
 
