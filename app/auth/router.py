@@ -8,7 +8,7 @@ from jose import jwt, JWTError
 import json
 import uuid
 from app.core.config import settings
-from app.models.user import User, FirebaseToken
+from app.domain.models.user import User, FirebaseToken
 
 router = APIRouter()
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/token", auto_error=False)
@@ -231,18 +231,21 @@ async def verify_token(token_data: FirebaseToken):
     """
     try:
         decoded_token = verify_firebase_token(token_data.id_token)
-        
         user = get_user_from_firebase(decoded_token["uid"])
-        
-        access_token = create_access_token({"sub": user.uid})
-        
+        # Nếu user là dict (trường hợp đặc biệt), lấy uid từ dict, nếu không thì từ object
+        user_uid = user["uid"] if isinstance(user, dict) and "uid" in user else getattr(user, "uid", None)
+        if not user_uid:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid user object returned from Firebase"
+            )
+        access_token = create_access_token({"sub": user_uid})
         return {
             "message": "Token verified",
             "user": format_firebase_user(user),
             "access_token": access_token,
             "token_type": "bearer"
         }
-    
     except Exception as e:
         print(f"Token verification error: {e}")
         raise HTTPException(

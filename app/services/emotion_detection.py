@@ -5,36 +5,43 @@ import torch
 from PIL import Image, UnidentifiedImageError
 import io
 import imghdr
-from transformers import AutoFeatureExtractor, AutoModelForImageClassification
+from transformers import AutoImageProcessor, AutoModelForImageClassification
 import uuid
 
 from app.core.config import settings
-from app.models.user import User
-from app.models.detection import DetectionResponse, DetectionResult, EmotionScore
+from app.domain.models.detection import DetectionResponse, DetectionResult, EmotionScore
+from app.domain.models.user import User
 from app.utils.cloudinary import upload_image_to_cloudinary
 from app.services.storage import save_detection
+from app.core.validators import is_valid_image_filename, is_non_empty_string
 
-feature_extractor = None
+image_processor = None
 model = None
 
 MAX_FILE_SIZE = 5 * 1024 * 1024
 
 async def initialize_model():
-    global feature_extractor, model
-    if feature_extractor is None or model is None:
+    global image_processor, model
+    if image_processor is None or model is None:
         try:
             print(f"Loading model: {settings.HUGGINGFACE_MODEL}")
-            feature_extractor = AutoFeatureExtractor.from_pretrained(settings.HUGGINGFACE_MODEL)
+            image_processor = AutoImageProcessor.from_pretrained(settings.HUGGINGFACE_MODEL, use_fast=True)
             model = AutoModelForImageClassification.from_pretrained(settings.HUGGINGFACE_MODEL)
             print("Model loaded successfully")
         except Exception as e:
             print(f"Error loading emotion detection model: {e}")
             print(traceback.format_exc())
             raise
-    return feature_extractor, model
+    return image_processor, model
 
 async def validate_image(image: UploadFile) -> bytes:
     content_type = image.content_type
+    # Kiểm tra tên file không rỗng và hợp lệ
+    if not image.filename or not is_valid_image_filename(image.filename):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"File '{image.filename}' is not a supported image format (jpg, jpeg, png, gif)."
+        )
     if not content_type or not content_type.startswith('image/'):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -88,10 +95,10 @@ async def detect_emotions(image: UploadFile, user: User) -> DetectionResponse:
                 detail=f"Error opening image: {str(e)}"
             )
         
-        feature_extractor, model = await initialize_model()
+        image_processor, model = await initialize_model()
         
         try:
-            inputs = feature_extractor(images=img, return_tensors="pt")
+            inputs = image_processor(images=img, return_tensors="pt")
             
             with torch.no_grad():
                 outputs = model(**inputs)
@@ -118,7 +125,6 @@ async def detect_emotions(image: UploadFile, user: User) -> DetectionResponse:
                     })
             
             emotion_scores.sort(key=lambda x: x["score"], reverse=True)
-            print(f"Detection result: {emotion_scores}")
             
             emotions = [
                 EmotionScore(

@@ -1,4 +1,4 @@
-from motor.motor_asyncio import AsyncIOMotorClient
+from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorCollection
 from pymongo.collection import Collection
 from app.core.config import settings
 import logging
@@ -35,9 +35,9 @@ async def close_mongodb_connection():
         mongo_client = None
         logging.info("Closed MongoDB connection")
 
-def get_collection(collection_name: str) -> Collection:
+def get_collection(collection_name: str) -> AsyncIOMotorCollection:
     """
-    Get a MongoDB collection.
+    Get a MongoDB collection as AsyncIOMotorCollection.
     """
     if database is None:
         raise ValueError("Database connection not established")

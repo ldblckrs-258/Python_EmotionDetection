@@ -1,4 +1,5 @@
 import os
+from pydantic import ConfigDict
 from pydantic_settings import BaseSettings
 from typing import Optional
 from dotenv import load_dotenv
@@ -45,7 +46,17 @@ class Settings(BaseSettings):
     # Guest usage limits
     GUEST_MAX_USAGE: int = int(os.getenv("GUEST_MAX_USAGE", "3"))
     
-    class Config:
-        env_file = ".env"
+    # Logging settings
+    LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
+    LOG_TO_FILE: bool = os.getenv("LOG_TO_FILE", "True").lower() == "true"
+    LOG_FORMAT: str = os.getenv("LOG_FORMAT", "json")
+    
+    # class Config:
+    #     env_file = ".env"
+    model_config = {
+        "env_file": ".env",
+        "env_file_encoding": "utf-8",
+        "case_sensitive": True
+    }
 
 settings = Settings()
