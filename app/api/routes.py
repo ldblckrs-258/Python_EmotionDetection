@@ -1,11 +1,15 @@
 from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, status, Response, Cookie
 from typing import List, Optional
-from app.services.emotion_detection import detect_emotions
-from app.models.detection import DetectionResponse
+from app.domain.models.detection import DetectionResponse
+from app.domain.models.user import User
 from app.auth.router import get_current_user, increment_guest_usage, GUEST_COOKIE_NAME
-from app.models.user import User
 from app.core.config import settings
-from app.services.storage import get_detections_by_user, get_detection, delete_detection
+from app.services.providers import (
+    get_emotion_detection_service,
+    get_detection_history_service,
+    get_single_detection_service,
+    get_delete_detection_service
+)
 
 router = APIRouter()
 
@@ -14,7 +18,8 @@ async def detect_emotion(
     response: Response,
     file: UploadFile = File(...),
     current_user: User = Depends(get_current_user),
-    guest_cookie: Optional[str] = Cookie(None, alias=GUEST_COOKIE_NAME)
+    guest_cookie: Optional[str] = Cookie(None, alias=GUEST_COOKIE_NAME),
+    detect_emotions=Depends(get_emotion_detection_service)
 ):
     """
     Upload ảnh để xác định cảm xúc.
@@ -45,7 +50,8 @@ async def detect_emotion(
 async def get_detection_history(
     current_user: User = Depends(get_current_user),
     skip: int = 0,
-    limit: int = 10
+    limit: int = 10,
+    get_detections_by_user=Depends(get_detection_history_service)
 ):
     """
     Trả về lịch sử sử dụng của người dùng.
@@ -55,7 +61,8 @@ async def get_detection_history(
 @router.get("/history/{detection_id}", response_model=DetectionResponse)
 async def get_detection_detail(
     detection_id: str,
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    get_detection=Depends(get_single_detection_service)
 ):
     """
     Lấy chi tiết một detection theo ID.
@@ -79,7 +86,9 @@ async def get_detection_detail(
 @router.delete("/history/{detection_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_detection_endpoint(
     detection_id: str,
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    get_detection=Depends(get_single_detection_service),
+    delete_detection=Depends(get_delete_detection_service)
 ):
     """
     Xóa một detection theo ID.

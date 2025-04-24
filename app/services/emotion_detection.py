@@ -9,10 +9,11 @@ from transformers import AutoImageProcessor, AutoModelForImageClassification
 import uuid
 
 from app.core.config import settings
-from app.models.user import User
-from app.models.detection import DetectionResponse, DetectionResult, EmotionScore
+from app.domain.models.detection import DetectionResponse, DetectionResult, EmotionScore
+from app.domain.models.user import User
 from app.utils.cloudinary import upload_image_to_cloudinary
 from app.services.storage import save_detection
+from app.core.validators import is_valid_image_filename, is_non_empty_string
 
 image_processor = None
 model = None
@@ -35,6 +36,12 @@ async def initialize_model():
 
 async def validate_image(image: UploadFile) -> bytes:
     content_type = image.content_type
+    # Kiểm tra tên file không rỗng và hợp lệ
+    if not image.filename or not is_valid_image_filename(image.filename):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"File '{image.filename}' is not a supported image format (jpg, jpeg, png, gif)."
+        )
     if not content_type or not content_type.startswith('image/'):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
