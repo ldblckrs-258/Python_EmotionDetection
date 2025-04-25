@@ -37,21 +37,6 @@ class User(BaseModel):
 
 class UserInDB(User):
     """User model for database operations"""
-    # class Config:
-    #     json_schema_extra = {
-    #         "example": {
-    #             "user_id": "firebase_user_id",
-    #             "email": "user@example.com",
-    #             "display_name": "John Doe",
-    #             "photo_url": "https://example.com/photo.jpg",
-    #             "is_guest": False,
-    #             "is_email_verified": True,
-    #             "providers": ["password", "google.com"],
-    #             "usage_count": 5,
-    #             "last_used": "2023-10-10T10:10:10Z",
-    #             "created_at": "2023-10-01T10:10:10Z"
-    #         }
-    #     }
     model_config = ConfigDict(
         json_schema_extra={
             "example": {

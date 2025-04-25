@@ -9,11 +9,13 @@ from transformers import AutoImageProcessor, AutoModelForImageClassification
 import uuid
 
 from app.core.config import settings
-from app.domain.models.detection import DetectionResponse, DetectionResult, EmotionScore
+from app.domain.models.detection import DetectionResponse, DetectionResult, EmotionScore, FaceDetection
 from app.domain.models.user import User
 from app.utils.cloudinary import upload_image_to_cloudinary
 from app.services.storage import save_detection
 from app.core.validators import is_valid_image_filename, is_non_empty_string
+from app.services.face_detection import detect_faces, crop_faces
+from app.services.preprocessing import preprocess_face
 
 image_processor = None
 model = None
@@ -78,10 +80,8 @@ async def validate_image(image: UploadFile) -> bytes:
 
 async def detect_emotions(image: UploadFile, user: User) -> DetectionResponse:
     start_time = time.time()
-    
     try:
         contents = await validate_image(image)
-        
         try:
             img = Image.open(io.BytesIO(contents)).convert("RGB")
         except UnidentifiedImageError as e:
@@ -94,56 +94,58 @@ async def detect_emotions(image: UploadFile, user: User) -> DetectionResponse:
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Error opening image: {str(e)}"
             )
-        
         image_processor, model = await initialize_model()
-        
         try:
-            inputs = image_processor(images=img, return_tensors="pt")
-            
-            with torch.no_grad():
-                outputs = model(**inputs)
-                logits = outputs.logits
-                probabilities = torch.nn.functional.softmax(logits, dim=-1)
-            
-            probs = probabilities[0].tolist()
-            emotion_scores = []
-            
-            if hasattr(model.config, "id2label"):
-                labels = model.config.id2label
+            # Face detection and cropping
+            face_boxes = detect_faces(img)
+            if not face_boxes:
+                face_detections = []
+                face_detected = False
             else:
-                labels = {
-                    0: "angry", 1: "disgust", 2: "fear", 
-                    3: "happy", 4: "sad", 5: "surprise", 6: "neutral"
-                }
-            
-            for idx, prob in enumerate(probs):
-                if idx in labels:
-                    label = labels[idx]
-                    emotion_scores.append({
-                        "label": label,
-                        "score": prob
-                    })
-            
-            emotion_scores.sort(key=lambda x: x["score"], reverse=True)
-            
-            emotions = [
-                EmotionScore(
-                    emotion=item["label"],
-                    score=item["score"],
-                    percentage=item["score"] * 100
-                )
-                for item in emotion_scores
-            ]
-            
-            face_detected = len(emotions) > 0
+                faces = crop_faces(img, face_boxes)
+                # Preprocess all faces
+                preprocessed_faces = [preprocess_face(face) for face in faces]
+                # Run emotion detection for each face
+                face_detections = []
+                for face_img, box in zip(preprocessed_faces, face_boxes):
+                    inputs = image_processor(images=face_img, return_tensors="pt")
+                    with torch.no_grad():
+                        outputs = model(**inputs)
+                        logits = outputs.logits
+                        probabilities = torch.nn.functional.softmax(logits, dim=-1)
+                    probs = probabilities[0].tolist()
+                    emotion_scores = []
+                    if hasattr(model.config, "id2label"):
+                        labels = model.config.id2label
+                    else:
+                        labels = {
+                            0: "angry", 1: "disgust", 2: "fear", 
+                            3: "happy", 4: "sad", 5: "surprise", 6: "neutral"
+                        }
+                    for idx, prob in enumerate(probs):
+                        if idx in labels:
+                            label = labels[idx]
+                            emotion_scores.append({
+                                "label": label,
+                                "score": prob
+                            })
+                    emotion_scores.sort(key=lambda x: x["score"], reverse=True)
+                    emotions = [
+                        EmotionScore(
+                            emotion=item["label"],
+                            score=item["score"],
+                            percentage=item["score"] * 100
+                        )
+                        for item in emotion_scores
+                    ]
+                    face_detections.append(FaceDetection(box=box, emotions=emotions))
+                face_detected = len(face_detections) > 0
         except Exception as e:
             print(f"Error in emotion detection: {e}")
             print(traceback.format_exc())
-            emotions = []
+            face_detections = []
             face_detected = False
-        
         processing_time = time.time() - start_time
-        
         image_url = None
         if not user.is_guest:
             try:
@@ -152,22 +154,19 @@ async def detect_emotions(image: UploadFile, user: User) -> DetectionResponse:
             except Exception as e:
                 print(f"Error uploading image to Cloudinary: {e}")
                 print(traceback.format_exc())
-        
+
         detection_results = DetectionResult(
-            emotions=emotions,
+            faces=face_detections,
             face_detected=face_detected,
             processing_time=processing_time
         )
-        
         response = DetectionResponse(
             detection_id=str(uuid.uuid4()),
             user_id=user.user_id,
             image_url=image_url,
             detection_results=detection_results
         )
-        
         await save_detection(response)
-        
         return response
     except HTTPException:
         raise

@@ -1,9 +1,8 @@
 from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, status, Response, Cookie
-from typing import List, Optional
+from typing import List
 from app.domain.models.detection import DetectionResponse
 from app.domain.models.user import User
 from app.auth.router import get_current_user, increment_guest_usage, GUEST_COOKIE_NAME
-from app.core.config import settings
 from app.services.providers import (
     get_emotion_detection_service,
     get_detection_history_service,
@@ -15,10 +14,8 @@ router = APIRouter()
 
 @router.post("/detect", response_model=DetectionResponse)
 async def detect_emotion(
-    response: Response,
     file: UploadFile = File(...),
     current_user: User = Depends(get_current_user),
-    guest_cookie: Optional[str] = Cookie(None, alias=GUEST_COOKIE_NAME),
     detect_emotions=Depends(get_emotion_detection_service)
 ):
     """
@@ -26,16 +23,16 @@ async def detect_emotion(
     Guest sẽ bị giới hạn số lần sử dụng.
     """
     # Check if user is a guest and has reached usage limit
-    if current_user.is_guest:
-        # Get current usage and increment it
-        new_usage_count = increment_guest_usage(response, guest_cookie)
+    # if current_user.is_guest:
+    #     # Get current usage and increment it
+    #     new_usage_count = increment_guest_usage(response, guest_cookie)
         
-        # Check if user has exceeded the limit
-        if new_usage_count > settings.GUEST_MAX_USAGE:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Guest users are limited to {settings.GUEST_MAX_USAGE} detections. Please log in for unlimited use."
-            )
+    #     # Check if user has exceeded the limit
+    #     if new_usage_count > settings.GUEST_MAX_USAGE:
+    #         raise HTTPException(
+    #             status_code=status.HTTP_403_FORBIDDEN,
+    #             detail=f"Guest users are limited to {settings.GUEST_MAX_USAGE} detections. Please log in for unlimited use."
+    #         )
     
     try:
         result = await detect_emotions(file, current_user)

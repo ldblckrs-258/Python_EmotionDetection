@@ -51,6 +51,15 @@ def test_detect_emotion_guest(test_image_path):
         assert "detection_id" in data
         assert "detection_results" in data
         assert data["user_id"].startswith("guest_")
+        # New: check multi-face structure
+        dr = data["detection_results"]
+        assert "faces" in dr
+        assert isinstance(dr["faces"], list)
+        if dr["faces"]:
+            face = dr["faces"][0]
+            assert "box" in face
+            assert "emotions" in face
+            assert isinstance(face["emotions"], list)
 
 def test_detect_emotion_authenticated(test_image_path, auth_token):
     # Authenticated user detect
@@ -63,6 +72,16 @@ def test_detect_emotion_authenticated(test_image_path, auth_token):
     assert "detection_id" in data
     assert "detection_results" in data
     assert data["user_id"] != ""
+    # New: check multi-face structure
+    dr = data["detection_results"]
+    assert "faces" in dr
+    assert isinstance(dr["faces"], list)
+    if dr["faces"]:
+        face = dr["faces"][0]
+        assert "box" in face
+        assert "emotions" in face
+        assert isinstance(face["emotions"], list)
+
     # Save detection_id for later tests
     global DETECTION_ID
     DETECTION_ID = data["detection_id"]

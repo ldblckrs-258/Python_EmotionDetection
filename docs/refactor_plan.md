@@ -56,7 +56,7 @@
 #### 2.3. Tăng cường bảo mật
 **Triển khai rate limiting:**
 - Thêm rate limiter middleware
-- Hạn chế số lượng requests từ một IP
+- Hạn chế số lượng requests từ một IP chưa đăng nhập
 
 **Cải thiện token security:**
 - Cập nhật JWT handling

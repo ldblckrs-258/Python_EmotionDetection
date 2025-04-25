@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Cookie, Response
+from fastapi import APIRouter, Depends, HTTPException, status, Cookie, Response, Body
 from fastapi.security import OAuth2PasswordBearer
 from typing import Optional
 from datetime import datetime, timedelta
@@ -34,12 +34,14 @@ init_firebase()
 GUEST_COOKIE_NAME = "guest_usage_info"
 GUEST_COOKIE_MAX_AGE = 60 * 60 * 24 * 30  # 30 days in seconds
 
-def create_access_token(user_data: dict) -> str:
+def create_access_token(user_data: dict, expires_delta: Optional[timedelta] = None) -> str:
     """
-    Tạo một JWT access token cho API
+    Tạo một JWT access token cho API, luôn có 'sub' (user_id) và 'exp'.
     """
-    expire = datetime.utcnow() + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     to_encode = user_data.copy()
+    if "sub" not in to_encode and "user_id" in to_encode:
+        to_encode["sub"] = to_encode["user_id"]
+    expire = datetime.utcnow() + (expires_delta or timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES))
     to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
     return encoded_jwt
@@ -271,3 +273,22 @@ async def get_usage(current_user: User = Depends(get_current_user)):
         "usage_count": current_user.usage_count,
         "max_usage": None if not current_user.is_guest else settings.GUEST_MAX_USAGE
     }
+
+@router.post("/refresh-token")
+async def refresh_token(
+    refresh_token: str = Body(..., embed=True)
+):
+    """
+    Nhận refresh token, xác thực và trả về access token mới.
+    (Giả định refresh token là JWT hợp lệ, có thể mở rộng lưu DB nếu cần)
+    """
+    try:
+        payload = jwt.decode(refresh_token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+        user_id = payload.get("sub")
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Invalid refresh token")
+        # Có thể kiểm tra thêm các trường khác nếu cần
+        access_token = create_access_token({"sub": user_id})
+        return {"access_token": access_token, "token_type": "bearer"}
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Invalid refresh token")

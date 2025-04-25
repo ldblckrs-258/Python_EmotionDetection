@@ -8,7 +8,7 @@ from contextlib import asynccontextmanager
 
 from app.core.config import settings
 from app.core.logging import get_logger
-from app.core.middlewares import ErrorHandlingMiddleware
+from app.core.middlewares import ErrorHandlingMiddleware, RateLimitMiddleware
 from app.core.exceptions import AppBaseException
 from app.api.routes import router as api_router
 from app.auth.router import router as auth_router
@@ -73,6 +73,13 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+)
+
+# Add Rate Limit middleware
+app.add_middleware(
+    RateLimitMiddleware,
+    max_requests= settings.GUEST_MAX_USAGE,
+    window_seconds= settings.GUEST_WINDOW_SECONDS
 )
 
 # Add error handling middleware - must be added after CORS middleware

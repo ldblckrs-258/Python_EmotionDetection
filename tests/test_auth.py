@@ -66,11 +66,11 @@ def test_guest_usage_limit():
             files = {"file": ("test.jpg", f, "image/jpeg")}
             r = client.post("/api/detect", files=files)
         if i < settings.GUEST_MAX_USAGE:
-            assert r.status_code in [200, status.HTTP_403_FORBIDDEN]  # Có thể bị giới hạn sớm nếu backend thay đổi
+            assert r.status_code in [200, status.HTTP_429_TOO_MANY_REQUESTS]  # Có thể bị giới hạn sớm nếu backend thay đổi
             continue
         # Lần cuối phải là lỗi giới hạn usage
-        assert r.status_code == status.HTTP_403_FORBIDDEN
-        assert "limited" in r.text
+        assert r.status_code == status.HTTP_429_TOO_MANY_REQUESTS
+        assert "rate limit" in r.text.lower()
 
 def test_verify_token_invalid():
     """

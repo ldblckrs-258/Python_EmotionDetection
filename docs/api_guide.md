@@ -137,22 +137,16 @@ file: [binary image data]
   "timestamp": "2023-06-01T10:05:00",
   "image_url": "https://cloudinary.com/path/to/image.jpg",
   "detection_results": {
-    "emotions": [
+    "faces": [
       {
-        "emotion": "happy",
-        "score": 0.92,
-        "percentage": 92.0
-      },
-      {
-        "emotion": "sad",
-        "score": 0.05,
-        "percentage": 5.0
-      },
-      {
-        "emotion": "angry",
-        "score": 0.03,
-        "percentage": 3.0
+        "box": [x, y, width, height],
+        "emotions": [
+          { "emotion": "happy", "score": 0.92, "percentage": 92.0 },
+          { "emotion": "sad", "score": 0.05, "percentage": 5.0 },
+          { "emotion": "angry", "score": 0.03, "percentage": 3.0 }
+        ]
       }
+      // ...có thể có nhiều khuôn mặt
     ],
     "face_detected": true,
     "processing_time": 0.235
@@ -160,8 +154,17 @@ file: [binary image data]
 }
 ```
 
-**Lỗi có thể gặp:**
+**Giải thích các trường:**
+- `faces`: Danh sách các khuôn mặt được phát hiện trên ảnh.
+    - `box`: Mảng 4 số nguyên `[x, y, width, height]` là tọa độ góc trên trái và kích thước khuôn mặt (đơn vị pixel trên ảnh gốc).
+    - `emotions`: Danh sách các cảm xúc dự đoán cho khuôn mặt đó.
+        - `emotion`: Tên cảm xúc (happy, sad, angry, ...)
+        - `score`: Xác suất (0-1)
+        - `percentage`: Tỷ lệ phần trăm (0-100)
+- `face_detected`: Có phát hiện khuôn mặt hay không (true/false)
+- `processing_time`: Thời gian xử lý (giây)
 
+**Lỗi có thể gặp:**
 - `400 Bad Request`: Không upload file hoặc file không phải là hình ảnh
 - `400 Bad Request`: Kích thước file quá lớn (giới hạn 5MB)
 - `400 Bad Request`: Định dạng file không được hỗ trợ
@@ -191,7 +194,7 @@ Query parameters:
     "timestamp": "2023-06-01T10:05:00",
     "image_url": "https://cloudinary.com/path/to/image1.jpg",
     "detection_results": {
-      "emotions": [...],
+      "faces": [ ... ],
       "face_detected": true,
       "processing_time": 0.235
     }
@@ -202,7 +205,7 @@ Query parameters:
     "timestamp": "2023-06-01T09:30:00",
     "image_url": "https://cloudinary.com/path/to/image2.jpg",
     "detection_results": {
-      "emotions": [...],
+      "faces": [ ... ],
       "face_detected": true,
       "processing_time": 0.212
     }
@@ -228,23 +231,7 @@ Authorization: Bearer {access_token}
   "timestamp": "2023-06-01T10:05:00",
   "image_url": "https://cloudinary.com/path/to/image.jpg",
   "detection_results": {
-    "emotions": [
-      {
-        "emotion": "happy",
-        "score": 0.92,
-        "percentage": 92.0
-      },
-      {
-        "emotion": "sad",
-        "score": 0.05,
-        "percentage": 5.0
-      },
-      {
-        "emotion": "angry",
-        "score": 0.03,
-        "percentage": 3.0
-      }
-    ],
+    "faces": [ ... ],
     "face_detected": true,
     "processing_time": 0.235
   }

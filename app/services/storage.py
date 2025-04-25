@@ -25,9 +25,14 @@ def detection_to_dict(detection: DetectionResponse) -> dict:
     detection_dict = detection.model_dump()
     # Convert nested Pydantic models to dict
     detection_dict["detection_results"] = detection.detection_results.model_dump()
-    detection_dict["detection_results"]["emotions"] = [
-        emotion.model_dump() for emotion in detection.detection_results.emotions
-    ]
+    # Convert faces and emotions to list of dicts
+    if "faces" in detection_dict["detection_results"]:
+        detection_dict["detection_results"]["faces"] = [
+            {"box": face.box, "emotions": [emotion.model_dump() for emotion in face.emotions]}
+            for face in detection_dict["detection_results"]["faces"]
+        ]
+    # Xóa trường emotions ngoài cùng nếu có
+    detection_dict["detection_results"].pop("emotions", None)
     return detection_dict
 
 def dict_to_detection(detection_dict: dict) -> DetectionResponse:
@@ -35,11 +40,22 @@ def dict_to_detection(detection_dict: dict) -> DetectionResponse:
     # MongoDB uses _id, convert to detection_id if needed
     if "_id" in detection_dict and "detection_id" not in detection_dict:
         detection_dict["detection_id"] = str(detection_dict.pop("_id"))
-    
     # Ensure timestamp is datetime
     if "timestamp" in detection_dict and isinstance(detection_dict["timestamp"], str):
         detection_dict["timestamp"] = datetime.fromisoformat(detection_dict["timestamp"])
-    
+    # Convert faces and emotions back to model
+    dr = detection_dict["detection_results"]
+    if "faces" in dr:
+        from app.domain.models.detection import FaceDetection, EmotionScore
+        dr["faces"] = [
+            FaceDetection(
+                box=face["box"],
+                emotions=[EmotionScore(**emo) for emo in face["emotions"]]
+            ) for face in dr["faces"]
+        ]
+    # Xóa trường emotions ngoài cùng nếu có
+    dr.pop("emotions", None)
+    detection_dict["detection_results"] = dr
     return DetectionResponse(**detection_dict)
 
 async def save_detection(detection: DetectionResponse) -> str:
