@@ -16,4 +16,7 @@ RUN pip install --no-cache-dir watchfiles
 
 EXPOSE 2508
 
+# Add healthcheck for Docker
+HEALTHCHECK CMD curl --fail http://localhost:2508/healthz || exit 1
+
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "2508", "--reload"]

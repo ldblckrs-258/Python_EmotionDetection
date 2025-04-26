@@ -2,6 +2,7 @@
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional
 from motor.motor_asyncio import AsyncIOMotorCollection
+from app.services.database import get_collection
 
 class Repository(ABC):
     def __init__(self, collection: AsyncIOMotorCollection):
@@ -54,3 +55,20 @@ class UserRepository(Repository):
     async def delete(self, id: Any) -> bool:
         result = await self.collection.delete_one({'_id': id})
         return result.deleted_count > 0
+
+class RefreshTokenRepository:
+    def __init__(self, collection: AsyncIOMotorCollection):
+        self.collection = collection
+
+    async def create(self, data: dict):
+        await self.collection.insert_one(data)
+
+    async def get_by_token(self, refresh_token: str):
+        return await self.collection.find_one({"refresh_token": refresh_token})
+
+    async def delete(self, refresh_token: str):
+        await self.collection.delete_one({"refresh_token": refresh_token})
+
+def get_refresh_token_repository():
+    collection = get_collection("refresh_tokens")
+    return RefreshTokenRepository(collection)

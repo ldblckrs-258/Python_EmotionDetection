@@ -42,3 +42,13 @@ def get_collection(collection_name: str) -> AsyncIOMotorCollection:
     if database is None:
         raise ValueError("Database connection not established")
     return database[collection_name]
+
+from motor.motor_asyncio import AsyncIOMotorDatabase
+
+def get_database() -> AsyncIOMotorDatabase:
+    """
+    Get the MongoDB database.
+    """
+    if database is None:
+        raise ValueError("Database connection not established")
+    return database

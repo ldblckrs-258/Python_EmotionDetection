@@ -31,7 +31,7 @@ class User(BaseModel):
     is_guest: bool = False
     is_email_verified: bool = False
     providers: List[str] = []
-    usage_count: int = 0
+    usage_count: int = 0  # For guests, always 0 and not tracked
     last_used: Optional[datetime] = None
     created_at: Optional[datetime] = None
 
@@ -53,4 +53,3 @@ class UserInDB(User):
                 }
             }
     )
-        

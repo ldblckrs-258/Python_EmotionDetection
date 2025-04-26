@@ -27,10 +27,17 @@ def detection_to_dict(detection: DetectionResponse) -> dict:
     detection_dict["detection_results"] = detection.detection_results.model_dump()
     # Convert faces and emotions to list of dicts
     if "faces" in detection_dict["detection_results"]:
-        detection_dict["detection_results"]["faces"] = [
-            {"box": face.box, "emotions": [emotion.model_dump() for emotion in face.emotions]}
-            for face in detection_dict["detection_results"]["faces"]
-        ]
+        faces = []
+        for face in detection_dict["detection_results"]["faces"]:
+            # If face is a dict, use as is; else, convert
+            if hasattr(face, "box") and hasattr(face, "emotions"):
+                faces.append({
+                    "box": face.box,
+                    "emotions": [emotion.model_dump() if hasattr(emotion, "model_dump") else emotion for emotion in face.emotions]
+                })
+            elif isinstance(face, dict):
+                faces.append(face)
+        detection_dict["detection_results"]["faces"] = faces
     # Xóa trường emotions ngoài cùng nếu có
     detection_dict["detection_results"].pop("emotions", None)
     return detection_dict

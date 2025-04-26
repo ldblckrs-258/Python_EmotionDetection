@@ -116,6 +116,57 @@
 - Thêm endpoint `/auth/refresh-token` để cấp lại access token mới từ refresh token (JWT).
 - Đảm bảo access token và refresh token đều được xác thực đúng chuẩn.
 
-### 3. Ảnh hưởng
+### 3. Bổ sung quản lý refresh token bảo mật
+- Lưu refresh_token vào MongoDB khi xác thực thành công (endpoint `/auth/verify-token`).
+- Endpoint `/auth/refresh-token` chỉ cấp access_token mới nếu refresh_token hợp lệ và còn trong MongoDB.
+- Thêm endpoint DELETE `/auth/refresh-token` để xóa một refresh_token cụ thể.
+- Thêm endpoint POST `/auth/refresh-token/reset` để xóa toàn bộ refresh_token của user hiện tại (thu hồi đăng nhập trên mọi thiết bị).
+- Các thao tác này giúp tăng bảo mật, chủ động thu hồi token khi cần thiết.
+
+### 4. Ảnh hưởng
 - Guest user bị giới hạn tốc độ gửi request và số lần sử dụng tính năng nhận diện cảm xúc.
 - Token bảo mật hơn, hỗ trợ cơ chế refresh token.
+
+## Giai đoạn 2.4: Nâng cao xử lý đồng thời
+
+### 1. Sử dụng background tasks (FastAPI)
+- Endpoint `/api/detect` sử dụng `BackgroundTasks` để upload ảnh và lưu vào database bất đồng bộ.
+- Kết quả detection trả về ngay cho client, các tác vụ nặng (upload/lưu DB) thực hiện ở background.
+- Hàm `detect_emotions` refactor để tách detection (trả về ngay) và upload/lưu DB (background).
+
+### 2. Worker service cho xử lý ảnh nặng
+- Tạo hàm background xử lý upload/lưu DB, có thể mở rộng thành worker service (Celery/RQ) trong tương lai.
+
+### 3. Notification hệ thống
+- Tạo module `app/services/notification.py` lưu trạng thái xử lý detection (pending/done/failed) bằng in-memory dict.
+- Thêm endpoint `/api/detect/status/{detection_id}` để client kiểm tra trạng thái xử lý (polling notification).
+- Khi background task hoàn tất/thất bại sẽ cập nhật trạng thái notification.
+
+### 4. Ảnh hưởng
+- API trả về detection_result rất nhanh, các thao tác nặng không làm chậm phản hồi.
+- Client có thể kiểm tra trạng thái xử lý qua endpoint mới.
+- Dễ mở rộng sang worker queue hoặc WebSocket notification.
+
+## Giai đoạn 3.1: Cải thiện hiệu suất
+
+### 1. Tối ưu model loading (emotion recognition)
+- Tách riêng service `app/services/model_loader.py` để quản lý việc load và cache model HuggingFace (dùng singleton, thread-safe, lazy loading).
+- Các service khác chỉ truy cập model/processor qua `EmotionModelCache.get_model_and_processor()` (không còn biến toàn cục hoặc load lại nhiều lần).
+- Giảm thời gian khởi động và tránh lãng phí bộ nhớ.
+
+### 2. Cải thiện Cloudinary upload
+- Bổ sung hàm `preprocess_image_for_upload` trong `app/utils/cloudinary.py` để resize/nén ảnh trước khi upload (giới hạn cạnh dài, nén JPEG chất lượng 85).
+- Hàm upload lên Cloudinary luôn xử lý ảnh trước khi upload, giúp giảm dung lượng lưu trữ và tăng tốc độ upload.
+- Đảm bảo upload_image_to_cloudinary luôn trả về str (trả về chuỗi rỗng nếu lỗi).
+
+## Phần 3.2: Cải thiện infrastructure
+
+### 1. Triển khai health checks
+- Thêm các endpoint `/healthz` và `/readyz` vào FastAPI để kiểm tra tình trạng ứng dụng.
+- Thêm Docker HEALTHCHECK sử dụng `/healthz`.
+
+### 2. Cấu hình monitoring
+- Thêm hệ thống metrics Prometheus (`prometheus_client`) và endpoint `/metrics`.
+- Tích hợp middleware để thu thập metrics request count, latency.
+- Thêm metric `face_detection_accuracy` để theo dõi độ chính xác phát hiện khuôn mặt.
+- Hướng dẫn tích hợp Prometheus/Grafana (tham khảo endpoint `/metrics`).

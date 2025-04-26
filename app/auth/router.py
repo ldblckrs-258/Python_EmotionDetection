@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Cookie, Response, Body
-from fastapi.security import OAuth2PasswordBearer
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from typing import Optional
 from datetime import datetime, timedelta
 import firebase_admin
@@ -9,9 +9,10 @@ import json
 import uuid
 from app.core.config import settings
 from app.domain.models.user import User, FirebaseToken
+from app.infrastructure.database.repository import get_refresh_token_repository
 
 router = APIRouter()
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/token", auto_error=False)
+oauth2_scheme = HTTPBearer(auto_error=False)
 
 # Initialize Firebase 
 firebase_app = None
@@ -32,7 +33,7 @@ init_firebase()
 
 # Cookie constants
 GUEST_COOKIE_NAME = "guest_usage_info"
-GUEST_COOKIE_MAX_AGE = 60 * 60 * 24 * 30  # 30 days in seconds
+GUEST_COOKIE_MAX_AGE = 60 * 60 * 24 * 3  # 3 days in seconds
 
 def create_access_token(user_data: dict, expires_delta: Optional[timedelta] = None) -> str:
     """
@@ -46,6 +47,18 @@ def create_access_token(user_data: dict, expires_delta: Optional[timedelta] = No
     encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
     return encoded_jwt
 
+def create_refresh_token(user_data: dict, expires_delta: Optional[timedelta] = None) -> str:
+    """
+    Tạo một JWT refresh token cho API, luôn có 'sub' (user_id), 'exp' và 'type'.
+    """
+    to_encode = user_data.copy()
+    if "sub" not in to_encode and "user_id" in to_encode:
+        to_encode["sub"] = to_encode["user_id"]
+    expire = datetime.utcnow() + (expires_delta or timedelta(days=7))
+    to_encode.update({"exp": expire, "type": "refresh"})
+    encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
+    return encoded_jwt
+
 def get_or_create_guest_user(
     response: Response, 
     guest_cookie: Optional[str] = None
@@ -55,14 +68,12 @@ def get_or_create_guest_user(
     """
     guest_info = {}
     guest_id = None
-    usage_count = 0
     
     # Try to parse the cookie if it exists
     if guest_cookie:
         try:
             guest_info = json.loads(guest_cookie)
             guest_id = guest_info.get("guest_id")
-            usage_count = guest_info.get("usage_count", 0)
         except (json.JSONDecodeError, ValueError):
             # Invalid cookie, we'll create a new one
             pass
@@ -74,7 +85,6 @@ def get_or_create_guest_user(
     # Update and set the cookie
     guest_info = {
         "guest_id": guest_id,
-        "usage_count": usage_count,
         "last_used": datetime.now().isoformat()
     }
     
@@ -91,45 +101,9 @@ def get_or_create_guest_user(
         user_id=guest_id,
         email="guest@example.com",  # Placeholder email for guests
         is_guest=True,
-        usage_count=usage_count,
+        usage_count=0,  # Always 0 for guests, not tracked
         last_used=datetime.now()
     )
-
-def increment_guest_usage(response: Response, guest_cookie: Optional[str] = None) -> int:
-    """
-    Tăng số lần sử dụng của guest user.
-    """
-    guest_info = {}
-    usage_count = 0
-    guest_id = None
-    
-    if guest_cookie:
-        try:
-            guest_info = json.loads(guest_cookie)
-            guest_id = guest_info.get("guest_id")
-            usage_count = guest_info.get("usage_count", 0)
-        except (json.JSONDecodeError, ValueError):
-            guest_id = f"guest_{uuid.uuid4()}"
-    else:
-        guest_id = f"guest_{uuid.uuid4()}"
-    
-    usage_count += 1
-    
-    guest_info = {
-        "guest_id": guest_id,
-        "usage_count": usage_count,
-        "last_used": datetime.now().isoformat()
-    }
-    
-    response.set_cookie(
-        key=GUEST_COOKIE_NAME,
-        value=json.dumps(guest_info),
-        max_age=GUEST_COOKIE_MAX_AGE,
-        httponly=True,
-        samesite="lax"
-    )
-    
-    return usage_count
 
 def verify_firebase_token(id_token: str) -> dict:
     """
@@ -188,7 +162,7 @@ def format_firebase_user(firebase_user) -> User:
 
 async def get_current_user(
     response: Response,
-    token: Optional[str] = Depends(oauth2_scheme),
+    token: Optional[HTTPAuthorizationCredentials] = Depends(oauth2_scheme),
     guest_cookie: Optional[str] = Cookie(None, alias=GUEST_COOKIE_NAME)
 ) -> User:
     """
@@ -197,33 +171,32 @@ async def get_current_user(
     if not token:
         # If no token, create or get a guest user
         return get_or_create_guest_user(response, guest_cookie)
-    
+    token_value = token.credentials
     try:
         # Try to decode JWT first
         try:
-            payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+            payload = jwt.decode(token_value, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
             user_id = payload.get("sub")
-            
             if not user_id:
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED,
                     detail="Invalid authentication credentials",
                     headers={"WWW-Authenticate": "Bearer"},
                 )
-            
             firebase_user = get_user_from_firebase(user_id)
             return format_firebase_user(firebase_user)
-        
         # If JWT decode fails, try Firebase token
         except JWTError:
-            firebase_data = verify_firebase_token(token)
+            firebase_data = verify_firebase_token(token_value)
             firebase_user = get_user_from_firebase(firebase_data["uid"])
             return format_firebase_user(firebase_user)
-    
     except Exception as e:
         print(f"Authentication error: {e}")
         # If authentication fails, fall back to guest user
         return get_or_create_guest_user(response, guest_cookie)
+
+# In-memory store for refresh tokens (demo, nên thay bằng DB ở production)
+refresh_token_store = {}
 
 @router.post("/verify-token")
 async def verify_token(token_data: FirebaseToken):
@@ -242,10 +215,20 @@ async def verify_token(token_data: FirebaseToken):
                 detail="Invalid user object returned from Firebase"
             )
         access_token = create_access_token({"sub": user_uid})
+        refresh_token = create_refresh_token({"sub": user_uid})
+        # Lưu refresh_token vào MongoDB
+        repo = get_refresh_token_repository()
+        await repo.create({
+            "refresh_token": refresh_token,
+            "user_id": user_uid,
+            "created_at": datetime.utcnow(),
+            "expires_at": datetime.utcnow() + timedelta(days=7)
+        })
         return {
             "message": "Token verified",
             "user": format_firebase_user(user),
             "access_token": access_token,
+            "refresh_token": refresh_token,
             "token_type": "bearer"
         }
     except Exception as e:
@@ -270,7 +253,7 @@ async def get_usage(current_user: User = Depends(get_current_user)):
     return {
         "user_id": current_user.user_id,
         "is_guest": current_user.is_guest,
-        "usage_count": current_user.usage_count,
+        "usage_count": 0 if current_user.is_guest else current_user.usage_count,
         "max_usage": None if not current_user.is_guest else settings.GUEST_MAX_USAGE
     }
 
@@ -280,15 +263,35 @@ async def refresh_token(
 ):
     """
     Nhận refresh token, xác thực và trả về access token mới.
-    (Giả định refresh token là JWT hợp lệ, có thể mở rộng lưu DB nếu cần)
+    Chỉ chấp nhận refresh_token đã phát hành và còn trong MongoDB.
     """
+    from jose import ExpiredSignatureError
+    repo = get_refresh_token_repository()
     try:
         payload = jwt.decode(refresh_token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
         user_id = payload.get("sub")
-        if not user_id:
+        token_type = payload.get("type")
+        # Kiểm tra token_type
+        if not user_id or token_type != "refresh":
             raise HTTPException(status_code=401, detail="Invalid refresh token")
-        # Có thể kiểm tra thêm các trường khác nếu cần
+        # Kiểm tra refresh_token có trong MongoDB
+        token_doc = await repo.get_by_token(refresh_token)
+        if not token_doc or token_doc.get("user_id") != user_id:
+            raise HTTPException(status_code=401, detail="Invalid refresh token")
         access_token = create_access_token({"sub": user_id})
         return {"access_token": access_token, "token_type": "bearer"}
+    except ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Refresh token expired")
     except JWTError:
         raise HTTPException(status_code=401, detail="Invalid refresh token")
+
+@router.post("/refresh-token/reset")
+async def reset_refresh_tokens(current_user: User = Depends(get_current_user)):
+    """
+    Xóa tất cả refresh_token của user hiện tại khỏi MongoDB.
+    """
+    repo = get_refresh_token_repository()
+    # Xóa tất cả token theo user_id
+    collection = repo.collection
+    result = await collection.delete_many({"user_id": current_user.user_id})
+    return {"message": f"Deleted {result.deleted_count} refresh tokens for user {current_user.user_id}"}

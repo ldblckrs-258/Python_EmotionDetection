@@ -46,6 +46,8 @@ def test_guest_profile_and_usage():
     usage = resp2.json()
     assert usage["is_guest"] is True
     assert usage["max_usage"] == settings.GUEST_MAX_USAGE
+    # usage_count is always 0 for guests
+    assert usage["usage_count"] == 0
 
 def test_guest_usage_limit():
     """
