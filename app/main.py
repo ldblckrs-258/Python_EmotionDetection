@@ -8,11 +8,14 @@ from contextlib import asynccontextmanager
 
 from app.core.config import settings
 from app.core.logging import get_logger
-from app.core.middlewares import ErrorHandlingMiddleware
+from app.core.middlewares import ErrorHandlingMiddleware, RateLimitMiddleware
 from app.core.exceptions import AppBaseException
 from app.api.routes import router as api_router
 from app.auth.router import router as auth_router
 from app.services.database import connect_to_mongodb, close_mongodb_connection
+from app.core.metrics import MetricsMiddleware, metrics_endpoint
+from app.services.database import get_database
+from firebase_admin import auth
 
 favicon_path = "./favicon.ico"
 
@@ -75,9 +78,19 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Add Rate Limit middleware
+app.add_middleware(
+    RateLimitMiddleware,
+    max_requests= settings.GUEST_MAX_USAGE,
+    window_seconds= settings.GUEST_WINDOW_SECONDS
+)
+
 # Add error handling middleware - must be added after CORS middleware
 # so CORS is applied before error handling
 app.add_middleware(ErrorHandlingMiddleware)
+
+# Add Prometheus metrics middleware
+app.add_middleware(MetricsMiddleware)
 
 # Register exception handlers
 @app.exception_handler(AppBaseException)
@@ -90,6 +103,49 @@ async def app_exception_handler(request: Request, exc: AppBaseException):
             "details": exc.details
         }
     )
+
+# Health check endpoints
+@app.get("/healthz", tags=["Health"])
+async def healthz():
+    return {"status": "ok"}
+
+@app.get("/readyz", tags=["Health"])
+async def readyz():
+    """
+    Check if critical services are ready (MongoDB & Firebase)
+    """
+    try:
+        # Check MongoDB connection
+        db = get_database()
+        await db.command('ping')
+        mongo_status = "ready"
+    except Exception as e:
+        logger.error(f"MongoDB health check failed: {str(e)}")
+        mongo_status = "not ready"
+
+    try:
+        # Check Firebase connection 
+        auth.get_user_by_email("tester@email.com")
+        firebase_status = "ready"
+    except Exception as e:
+        logger.error(f"Firebase health check failed: {str(e)}")
+        firebase_status = "not ready"
+
+    # Overall status is ready only if both services are ready
+    overall_status = "ready" if mongo_status == "ready" and firebase_status == "ready" else "not ready"
+    
+    return {
+        "status": overall_status,
+        "services": {
+            "mongodb": mongo_status,
+            "firebase": firebase_status
+        }
+    }
+
+# Prometheus metrics endpoint
+@app.get("/metrics", include_in_schema=False)
+def metrics():
+    return metrics_endpoint()
 
 # Routes
 app.include_router(auth_router, prefix="/auth", tags=["Authentication"])

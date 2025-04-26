@@ -1,45 +1,54 @@
-from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, status, Response, Cookie
-from typing import List, Optional
+from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, status, BackgroundTasks
+from typing import List
 from app.domain.models.detection import DetectionResponse
 from app.domain.models.user import User
-from app.auth.router import get_current_user, increment_guest_usage, GUEST_COOKIE_NAME
-from app.core.config import settings
+from app.auth.router import get_current_user
 from app.services.providers import (
     get_emotion_detection_service,
     get_detection_history_service,
     get_single_detection_service,
     get_delete_detection_service
 )
+from fastapi.responses import StreamingResponse
+import asyncio
+import json
+import io
+from datetime import datetime
 
 router = APIRouter()
 
+def jsonable_encoder(obj):
+    """
+    Recursively convert obj to something JSON serializable (handle datetime, pydantic models, etc).
+    """
+    if isinstance(obj, datetime):
+        return obj.isoformat()
+    if hasattr(obj, 'model_dump'):
+        return jsonable_encoder(obj.model_dump())
+    if isinstance(obj, dict):
+        return {k: jsonable_encoder(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [jsonable_encoder(v) for v in obj]
+    return obj
+
 @router.post("/detect", response_model=DetectionResponse)
 async def detect_emotion(
-    response: Response,
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     current_user: User = Depends(get_current_user),
-    guest_cookie: Optional[str] = Cookie(None, alias=GUEST_COOKIE_NAME),
     detect_emotions=Depends(get_emotion_detection_service)
 ):
     """
     Upload ảnh để xác định cảm xúc.
     Guest sẽ bị giới hạn số lần sử dụng.
     """
-    # Check if user is a guest and has reached usage limit
-    if current_user.is_guest:
-        # Get current usage and increment it
-        new_usage_count = increment_guest_usage(response, guest_cookie)
-        
-        # Check if user has exceeded the limit
-        if new_usage_count > settings.GUEST_MAX_USAGE:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Guest users are limited to {settings.GUEST_MAX_USAGE} detections. Please log in for unlimited use."
-            )
     
     try:
-        result = await detect_emotions(file, current_user)
-        return result
+        # Tách detection (nhẹ) và upload/lưu DB (nặng) thành 2 bước
+        detection_result, bg_args = await detect_emotions(file, current_user, background=True)
+        # Đẩy task upload/lưu DB vào background
+        background_tasks.add_task(bg_args["background_func"], *bg_args["args"], **bg_args["kwargs"])
+        return detection_result
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -115,3 +124,60 @@ async def delete_detection_endpoint(
         )
     
     return None
+
+@router.get("/detect/status/{detection_id}")
+def get_detection_status(detection_id: str):
+    """
+    Kiểm tra trạng thái xử lý detection (pending/done/failed).
+    """
+    from app.services.notification import get_notification
+    status = get_notification(detection_id)
+    return {"detection_id": detection_id, "status": status}
+
+@router.post("/detect/batch")
+async def detect_emotion_batch(
+    background_tasks: BackgroundTasks,
+    files: List[UploadFile] = File(...),
+    current_user: User = Depends(get_current_user),
+    detect_emotions=Depends(get_emotion_detection_service),
+):
+    """
+    Nhận nhiều file ảnh, trả về kết quả từng phần (streaming, SSE-style).
+    Chỉ cho phép người dùng đã đăng nhập (không cho guest).
+    """
+    if current_user.is_guest:
+        raise HTTPException(status_code=401, detail="Authentication required for batch detection.")
+    # 1. Đọc toàn bộ file vào bộ nhớ ngay lập tức
+    file_contents = []
+    for file in files:
+        content = await file.read()
+        file_contents.append({
+            "filename": file.filename,
+            "content_type": file.content_type,
+            "content": content
+        })
+
+    async def event_stream():
+        for file_data in file_contents:
+            try:
+                file_like = io.BytesIO(file_data["content"])
+                upload_file = UploadFile(
+                    file=file_like,
+                    filename=file_data["filename"],
+                )
+                detection_result, bg_args = await detect_emotions(
+                    image=upload_file,
+                    user=current_user,
+                    background=True,
+                    is_BytesIO=True
+                )
+                background_tasks.add_task(bg_args["background_func"], *bg_args["args"], **bg_args["kwargs"])
+                # Sử dụng jsonable_encoder để chuyển đổi kết quả
+                yield f"data: {json.dumps(jsonable_encoder(detection_result))}\n\n"
+                await asyncio.sleep(0)
+            except Exception as e:
+                error = {"error": str(e), "filename": file_data["filename"]}
+                yield f"data: {json.dumps(error)}\n\n"
+                await asyncio.sleep(0)
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")

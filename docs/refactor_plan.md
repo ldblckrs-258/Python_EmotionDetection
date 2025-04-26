@@ -56,7 +56,7 @@
 #### 2.3. Tăng cường bảo mật
 **Triển khai rate limiting:**
 - Thêm rate limiter middleware
-- Hạn chế số lượng requests từ một IP
+- Hạn chế số lượng requests từ một IP chưa đăng nhập
 
 **Cải thiện token security:**
 - Cập nhật JWT handling
@@ -64,6 +64,7 @@
 
 #### 2.4. Nâng cao xử lý đồng thời
 **Sử dụng background tasks:**
+- Thực hiện việc detection trước và trả về detection_result trước cho người dùng, còn các công việc upload hình ảnh và lưu vào database sẽ thực hiện bất đồng bộ tại background
 - Triển khai FastAPI background tasks cho xử lý ảnh nặng
 - Tạo worker services cho việc phát hiện và phân tích nhiều khuôn mặt
 - Triển khai hệ thống notification để thông báo khi xử lý hoàn tất
@@ -79,7 +80,6 @@
 **Cải thiện Cloudinary upload:**
 - Tối ưu hóa upload process
 - Bổ sung xử lý ảnh trước khi upload
-- Thêm tùy chọn lưu riêng từng khuôn mặt được phát hiện
 
 #### 3.2. Cải thiện infrastructure
 **Triển khai health checks:**

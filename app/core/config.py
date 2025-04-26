@@ -44,7 +44,8 @@ class Settings(BaseSettings):
     ALGORITHM: str = os.getenv("ALGORITHM", "HS256")
     
     # Guest usage limits
-    GUEST_MAX_USAGE: int = int(os.getenv("GUEST_MAX_USAGE", "3"))
+    GUEST_MAX_USAGE: int = int(os.getenv("GUEST_MAX_USAGE", "5"))
+    GUEST_WINDOW_SECONDS: int = int(os.getenv("GUEST_WINDOW_SECONDS", "3600"))  # 1 hour
     
     # Logging settings
     LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
@@ -55,7 +56,6 @@ class Settings(BaseSettings):
     #     env_file = ".env"
     model_config = {
         "env_file": ".env",
-        "env_file_encoding": "utf-8",
         "case_sensitive": True
     }
 
