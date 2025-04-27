@@ -133,5 +133,4 @@ uritemplate==4.1.1
 urllib3==2.3.0
 yarg==0.1.9
 psutil==7.0.0
-pywin32
 prometheus_client==0.20.0
