@@ -19,9 +19,10 @@ firebase_app = None
 
 def init_firebase():
     global firebase_app
-    if firebase_app is None and settings.FIREBASE_SERVICE_ACCOUNT_KEY:
+    cred_dict = settings.get_firebase_credential_dict()
+    if firebase_app is None and cred_dict:
         try:
-            cred = credentials.Certificate(settings.FIREBASE_SERVICE_ACCOUNT_KEY)
+            cred = credentials.Certificate(cred_dict)
             firebase_app = firebase_admin.initialize_app(cred)
             print("Firebase initialized successfully")
         except Exception as e:

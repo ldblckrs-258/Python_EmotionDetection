@@ -3,6 +3,8 @@ from pydantic import ConfigDict
 from pydantic_settings import BaseSettings
 from typing import Optional
 from dotenv import load_dotenv
+import base64
+import json
 
 # Load environment variables
 load_dotenv()
@@ -33,7 +35,13 @@ class Settings(BaseSettings):
     CLOUDINARY_API_SECRET: str = os.getenv("CLOUDINARY_API_SECRET", "")
     
     # Firebase settings
-    FIREBASE_SERVICE_ACCOUNT_KEY: str = os.getenv("FIREBASE_SERVICE_ACCOUNT_KEY", "")
+    FIREBASE_SERVICE_ACCOUNT_B64: str = os.getenv("FIREBASE_SERVICE_ACCOUNT_B64", "")
+
+    def get_firebase_credential_dict(self):
+        if not self.FIREBASE_SERVICE_ACCOUNT_B64:
+            return None
+        decoded = base64.b64decode(self.FIREBASE_SERVICE_ACCOUNT_B64)
+        return json.loads(decoded)
     
     # Hugging Face model
     HUGGINGFACE_MODEL: str = os.getenv("HUGGINGFACE_MODEL", "dima806/facial_emotions_image_detection")
