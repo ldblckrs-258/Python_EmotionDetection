@@ -6,8 +6,9 @@ from dotenv import load_dotenv
 import base64
 import json
 
-# Load environment variables
-load_dotenv()
+# Load environment variables if in development mode
+if os.getenv("ENV") != "production":
+    load_dotenv()
 
 class Settings(BaseSettings):
     # App settings
