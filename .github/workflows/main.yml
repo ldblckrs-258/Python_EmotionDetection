@@ -23,39 +23,20 @@ jobs:
         run: |
           echo $HEROKU_API_KEY | docker login --username=_ --password-stdin registry.heroku.com
 
-      - name: Set environment variables in Heroku
+      - name: Set Heroku environment variables
         env:
-          SECRET_KEY: ${{ secrets.SECRET_KEY }}
-          MONGODB_URI: ${{ secrets.MONGODB_URI }}
-          MONGODB_NAME: ${{ secrets.MONGODB_NAME }}
-          CLOUDINARY_CLOUD_NAME: ${{ secrets.CLOUDINARY_CLOUD_NAME }}
-          CLOUDINARY_API_KEY: ${{ secrets.CLOUDINARY_API_KEY }}
-          CLOUDINARY_API_SECRET: ${{ secrets.CLOUDINARY_API_SECRET }}
-          FIREBASE_SERVICE_ACCOUNT_B64: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_B64 }}
-          HUGGINGFACE_MODEL: ${{ secrets.HUGGINGFACE_MODEL }}
-          FIREBASE_API_KEY: ${{ secrets.FIREBASE_API_KEY }}
-          FIREBASE_AUTH_DOMAIN: ${{ secrets.FIREBASE_AUTH_DOMAIN }}
-          FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
-          FIREBASE_STORAGE_BUCKET: ${{ secrets.FIREBASE_STORAGE_BUCKET }}
-          FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.FIREBASE_MESSAGING_SENDER_ID }}
-          FIREBASE_APP_ID: ${{ secrets.FIREBASE_APP_ID }}
-          FIREBASE_MEASUREMENT_ID: ${{ secrets.FIREBASE_MEASUREMENT_ID }}
+          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
         run: |
-          heroku config:set SECRET_KEY=$SECRET_KEY --app ${{ secrets.HEROKU_APP_NAME }}
-          heroku config:set MONGODB_URI=$MONGODB_URI --app ${{ secrets.HEROKU_APP_NAME }}
-          heroku config:set MONGODB_NAME=$MONGODB_NAME --app ${{ secrets.HEROKU_APP_NAME }}
-          heroku config:set CLOUDINARY_CLOUD_NAME=$CLOUDINARY_CLOUD_NAME --app ${{ secrets.HEROKU_APP_NAME }}
-          heroku config:set CLOUDINARY_API_KEY=$CLOUDINARY_API_KEY --app ${{ secrets.HEROKU_APP_NAME }}
-          heroku config:set CLOUDINARY_API_SECRET=$CLOUDINARY_API_SECRET --app ${{ secrets.HEROKU_APP_NAME }}
-          heroku config:set FIREBASE_SERVICE_ACCOUNT_B64=$FIREBASE_SERVICE_ACCOUNT_B64 --app ${{ secrets.HEROKU_APP_NAME }}
-          heroku config:set HUGGINGFACE_MODEL=$HUGGINGFACE_MODEL --app ${{ secrets.HEROKU_APP_NAME }}
-          heroku config:set FIREBASE_API_KEY=$FIREBASE_API_KEY --app ${{ secrets.HEROKU_APP_NAME }}
-          heroku config:set FIREBASE_AUTH_DOMAIN=$FIREBASE_AUTH_DOMAIN --app ${{ secrets.HEROKU_APP_NAME }}
-          heroku config:set FIREBASE_PROJECT_ID=$FIREBASE_PROJECT_ID --app ${{ secrets.HEROKU_APP_NAME }}
-          heroku config:set FIREBASE_STORAGE_BUCKET=$FIREBASE_STORAGE_BUCKET --app ${{ secrets.HEROKU_APP_NAME }}
-          heroku config:set FIREBASE_MESSAGING_SENDER_ID=$FIREBASE_MESSAGING_SENDER_ID --app ${{ secrets.HEROKU_APP_NAME }}
-          heroku config:set FIREBASE_APP_ID=$FIREBASE_APP_ID --app ${{ secrets.HEROKU_APP_NAME }}
-          heroku config:set FIREBASE_MEASUREMENT_ID=$FIREBASE_MEASUREMENT_ID --app ${{ secrets.HEROKU_APP_NAME }}
+          echo $HEROKU_API_KEY | HEROKU_API_KEY=$HEROKU_API_KEY heroku auth:token
+          heroku config:set \
+            MONGODB_URI="${{ secrets.MONGODB_URI }}" \
+            MONGODB_NAME="${{ secrets.MONGODB_NAME }}" \
+            CLOUDINARY_CLOUD_NAME="${{ secrets.CLOUDINARY_CLOUD_NAME }}" \
+            CLOUDINARY_API_KEY="${{ secrets.CLOUDINARY_API_KEY }}" \
+            CLOUDINARY_API_SECRET="${{ secrets.CLOUDINARY_API_SECRET }}" \
+            SECRET_KEY="${{ secrets.SECRET_KEY }}" \
+            FIREBASE_SERVICE_ACCOUNT_B64="${{ secrets.FIREBASE_SERVICE_ACCOUNT_B64 }}" \
+            --app ${{ secrets.HEROKU_APP_NAME }}
 
       - name: Build Docker image
         run: |
