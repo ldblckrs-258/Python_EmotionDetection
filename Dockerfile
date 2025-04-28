@@ -14,9 +14,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 RUN pip install --no-cache-dir watchfiles
 
+COPY . .
+
 EXPOSE 2508
 
-# Add healthcheck for Docker
 HEALTHCHECK CMD curl --fail http://localhost:2508/healthz || exit 1
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "${PORT}"]
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port $PORT"]
