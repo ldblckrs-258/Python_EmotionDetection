@@ -1,3 +1,4 @@
+import os
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
@@ -155,10 +156,16 @@ app.include_router(api_router, prefix=settings.API_PREFIX, tags=["Emotion Detect
 @app.get("/")
 async def root():
     scheme = "https" if getattr(settings, "HTTPS_ENABLED", False) else "http"
+    # is development mode
+    url_prefix = ''
+    if os.getenv("ENV") != "production":
+        url_prefix = f"{scheme}://{settings.HOST}:{settings.PORT}"
+    else:
+        url_prefix = f"{scheme}://{settings.HOST}"
     return {
         "message": "Welcome to the Face Emotion Detection API",
-        "docs": f"{scheme}://{settings.HOST}:{settings.PORT}/docs",
-        "redoc": f"{scheme}://{settings.HOST}:{settings.PORT}/redoc"
+        "docs": f"{url_prefix}/docs",
+        "redoc": f"{url_prefix}/redoc",
     }
     
 @app.get('/favicon.ico', include_in_schema=False)

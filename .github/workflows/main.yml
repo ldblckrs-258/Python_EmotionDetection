@@ -36,7 +36,8 @@ jobs:
             CLOUDINARY_API_SECRET="${{ secrets.CLOUDINARY_API_SECRET }}" \
             SECRET_KEY="${{ secrets.SECRET_KEY }}" \
             FIREBASE_SERVICE_ACCOUNT_B64="${{ secrets.FIREBASE_SERVICE_ACCOUNT_B64 }}" \
-            --app ${{ secrets.HEROKU_APP_NAME }}
+            MAX_BATCH_SIZE="${{ secrets.MAX_BATCH_SIZE }}" \
+            --app ${{ secrets.HEROKU_APP_NAME }} \
 
       - name: Build Docker image
         run: |

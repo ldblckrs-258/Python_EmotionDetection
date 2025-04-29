@@ -55,11 +55,15 @@ class Settings(BaseSettings):
     # Guest usage limits
     GUEST_MAX_USAGE: int = int(os.getenv("GUEST_MAX_USAGE", "5"))
     GUEST_WINDOW_SECONDS: int = int(os.getenv("GUEST_WINDOW_SECONDS", "3600"))  # 1 hour
+    MAX_BATCH_SIZE: int = int(os.getenv("MAX_BATCH_SIZE", "4"))
     
     # Logging settings
     LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
     LOG_TO_FILE: bool = os.getenv("LOG_TO_FILE", "True").lower() == "true"
     LOG_FORMAT: str = os.getenv("LOG_FORMAT", "json")
+    
+    # Face detection minSize (for detectMultiScale)
+    FACE_DETECT_MIN_SIZE: int = int(os.getenv("FACE_DETECT_MIN_SIZE", "32"))  # default 32px
     
     # class Config:
     #     env_file = ".env"
