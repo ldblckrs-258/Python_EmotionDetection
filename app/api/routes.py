@@ -49,6 +49,11 @@ async def detect_emotion(
         # Đẩy task upload/lưu DB vào background
         background_tasks.add_task(bg_args["background_func"], *bg_args["args"], **bg_args["kwargs"])
         return detection_result
+    except HTTPException as e:
+        raise HTTPException(
+            status_code=e.status_code,
+            detail=e.detail
+        )
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -65,6 +70,9 @@ async def get_detection_history(
     """
     Trả về lịch sử sử dụng của người dùng.
     """
+    if current_user.is_guest:
+        raise HTTPException(status_code=401, detail="Authentication required for batch detection.")
+    
     return await get_detections_by_user(current_user.user_id, skip, limit)
 
 @router.get("/history/{detection_id}", response_model=DetectionResponse)
@@ -76,6 +84,9 @@ async def get_detection_detail(
     """
     Lấy chi tiết một detection theo ID.
     """
+    if current_user.is_guest:
+        raise HTTPException(status_code=401, detail="Authentication required for batch detection.")
+    
     detection = await get_detection(detection_id)
     if not detection:
         raise HTTPException(
@@ -102,6 +113,8 @@ async def delete_detection_endpoint(
     """
     Xóa một detection theo ID.
     """
+    if current_user.is_guest:
+        raise HTTPException(status_code=401, detail="Authentication required for batch detection.")
     detection = await get_detection(detection_id)
     if not detection:
         raise HTTPException(

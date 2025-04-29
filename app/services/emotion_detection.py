@@ -150,7 +150,7 @@ async def detect_emotions(image: UploadFile, user: User, background: bool = Fals
             detection_results=detection_results
         )
         # Nếu background=True, chỉ trả về detection_result và đẩy upload/lưu DB vào background
-        if background:
+        if background and not user.is_guest:
             async def background_upload_and_save(response_obj, image_bytes, user_obj):
                 try:
                     image_url = await upload_image_to_cloudinary(image_bytes) if not user_obj.is_guest else None
