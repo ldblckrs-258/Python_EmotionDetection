@@ -5,6 +5,7 @@ import os
 from datetime import datetime
 from typing import Dict, Any, Optional
 from pathlib import Path
+import re
 
 from app.core.config import settings
 
@@ -14,11 +15,18 @@ class JsonFormatter(logging.Formatter):
     Custom formatter that outputs log records as JSON objects.
     This makes logs easier to parse and analyze with tools like ELK stack.
     """
+    # Danh sách các trường có thể chứa dữ liệu lớn
+    LARGE_DATA_FIELDS = ['data', 'image', 'frame', 'base64', 'content']
+    # Regex pattern để tìm dữ liệu base64
+    BASE64_PATTERN = re.compile(r'[A-Za-z0-9+/]{50,}={0,2}')
+    # Giới hạn kích thước cho các giá trị chuỗi
+    MAX_STRING_LENGTH = 1000
+    
     def format(self, record: logging.LogRecord) -> str:
         log_entry: Dict[str, Any] = {
             "timestamp": datetime.fromtimestamp(record.created).isoformat(),
             "level": record.levelname,
-            "message": record.getMessage(),
+            "message": self.sanitize_string(record.getMessage()),
             "module": record.module,
             "function": record.funcName,
             "line": record.lineno
@@ -38,6 +46,8 @@ class JsonFormatter(logging.Formatter):
                 extra_dict[key[7:]] = getattr(record, key)
                 
         if extra_dict:
+            # Sanitize extra data
+            extra_dict = self.sanitize_dict(extra_dict)
             log_entry["extra"] = extra_dict
             
         # Add any additional attributes from the record
@@ -49,12 +59,57 @@ class JsonFormatter(logging.Formatter):
                            "relativeCreated", "stack_info", "thread", "threadName",
                            "extra"]:
                 try:
+                    # Sanitize the value before including it
+                    if isinstance(value, dict):
+                        value = self.sanitize_dict(value)
+                    elif isinstance(value, str):
+                        value = self.sanitize_string(value)
                     json.dumps({key: value})  # Check if serializable
                     log_entry[key] = value
                 except (TypeError, OverflowError):
                     log_entry[key] = str(value)
                     
         return json.dumps(log_entry)
+        
+    def sanitize_dict(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Sanitize a dictionary by removing or truncating large data fields.
+        """
+        if not isinstance(data, dict):
+            return data
+            
+        result = {}
+        for key, value in data.items():
+            # Bỏ qua các trường nhạy cảm hoặc dữ liệu lớn
+            if any(field in key.lower() for field in self.LARGE_DATA_FIELDS):
+                if isinstance(value, str):
+                    length = len(value)
+                    result[key] = f"[LARGE DATA REMOVED: {length} bytes]"
+                else:
+                    result[key] = "[LARGE DATA REMOVED]"
+            elif isinstance(value, dict):
+                result[key] = self.sanitize_dict(value)
+            elif isinstance(value, str):
+                result[key] = self.sanitize_string(value)
+            else:
+                result[key] = value
+        return result
+        
+    def sanitize_string(self, value: str) -> str:
+        """
+        Sanitize a string by removing large base64 data and truncating if necessary.
+        """
+        if not isinstance(value, str):
+            return value
+            
+        # Remove base64 data
+        sanitized = self.BASE64_PATTERN.sub("[BASE64 DATA REMOVED]", value)
+        
+        # Truncate if too long
+        if len(sanitized) > self.MAX_STRING_LENGTH:
+            return sanitized[:self.MAX_STRING_LENGTH] + f"... [TRUNCATED, total length: {len(value)} chars]"
+        
+        return sanitized
 
 
 def setup_logging() -> logging.Logger:
@@ -84,7 +139,7 @@ def setup_logging() -> logging.Logger:
     console_handler.setLevel(log_level)
     
     console_formatter = logging.Formatter(
-        "%(asctime)s - %(levelname)s - %(message)s"
+        "%(asctime)s - %(levelname)s - %(name)s - %(message)s"
     )
     console_handler.setFormatter(console_formatter)
     app_logger.addHandler(console_handler)
@@ -97,7 +152,46 @@ def setup_logging() -> logging.Logger:
         file_handler.setFormatter(JsonFormatter())
         app_logger.addHandler(file_handler)
     
+    # Setup loggers for specific modules
+    setup_module_loggers(log_level)
+    
     return app_logger
+
+
+def setup_module_loggers(default_level: int) -> None:
+    """
+    Set up loggers for specific modules.
+    This allows for more detailed logging in specific areas.
+    """
+    # Enable debug logging for the socket.io modules if DEBUG_SOCKETIO is enabled
+    if getattr(settings, "DEBUG_SOCKETIO", False):
+        socketio_level = logging.DEBUG
+    else:
+        socketio_level = logging.INFO
+        
+    # Enable debug logging for video processing if DEBUG_VIDEO is enabled
+    if getattr(settings, "DEBUG_VIDEO", False):
+        video_level = logging.DEBUG
+    else:
+        video_level = default_level
+    
+    # Configure specific loggers
+    module_levels = {
+        "app.services.video_emotion_detection": video_level,
+        "app.services.face_detection": video_level,
+        "app.services.face_tracking": video_level,
+        "app.api.socketio": socketio_level,
+        "socketio": socketio_level,
+        "engineio": socketio_level,
+    }
+    
+    for module, level in module_levels.items():
+        module_logger = logging.getLogger(module)
+        module_logger.setLevel(level)
+        
+        # Make sure this logger uses our handlers
+        for handler in logging.getLogger("app").handlers:
+            module_logger.addHandler(handler)
 
 
 # Create a custom LoggerAdapter that allows adding extra fields
