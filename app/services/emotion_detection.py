@@ -150,21 +150,31 @@ async def detect_emotions(image: UploadFile, user: User, background: bool = Fals
             detection_results=detection_results
         )
         # Nếu background=True, chỉ trả về detection_result và đẩy upload/lưu DB vào background
-        if background and not user.is_guest:
-            async def background_upload_and_save(response_obj, image_bytes, user_obj):
-                try:
-                    image_url = await upload_image_to_cloudinary(image_bytes) if not user_obj.is_guest else None
-                    if image_url:
-                        response_obj.image_url = image_url
-                    await save_detection(response_obj)
-                    notify_processing_done(response_obj.detection_id)
-                except Exception as e:
-                    notify_processing_failed(response_obj.detection_id)
-            bg_args = {
-                "background_func": background_upload_and_save,
-                "args": (response, contents, user),
-                "kwargs": {}
-            }
+        if background:
+            if not user.is_guest:
+                async def background_upload_and_save(response_obj, image_bytes, user_obj):
+                    try:
+                        image_url = await upload_image_to_cloudinary(image_bytes) if not user_obj.is_guest else None
+                        if image_url:
+                            response_obj.image_url = image_url
+                        await save_detection(response_obj)
+                        notify_processing_done(response_obj.detection_id)
+                    except Exception as e:
+                        notify_processing_failed(response_obj.detection_id)
+                bg_args = {
+                    "background_func": background_upload_and_save,
+                    "args": (response, contents, user),
+                    "kwargs": {}
+                }
+            else:
+                # For guest users, don't save anything to database, just return response
+                async def empty_background_task():
+                    pass
+                bg_args = {
+                    "background_func": empty_background_task,
+                    "args": (),
+                    "kwargs": {}
+                }
             return response, bg_args
         # Nếu không chạy background, upload và lưu luôn (giữ nguyên cũ)
         image_url = None
@@ -175,8 +185,8 @@ async def detect_emotions(image: UploadFile, user: User, background: bool = Fals
             except Exception as e:
                 print(f"Error uploading image to Cloudinary: {e}")
                 print(traceback.format_exc())
-        response.image_url = image_url
-        await save_detection(response)
+            response.image_url = image_url
+            await save_detection(response)
         return response
     except HTTPException:
         raise
