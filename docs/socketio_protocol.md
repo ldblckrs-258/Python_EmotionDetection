@@ -10,11 +10,17 @@ Giao thức Socket.IO cho tính năng nhận diện cảm xúc realtime là mộ
 
 ```javascript
 // JavaScript client
-const socket = io("http://hostname:port/emotion-detection", {
-  auth: {
-    token: "jwt_token",
-  },
-})
+const socket = io(serverUrl + "/emotion-detection", {
+      path: "/socket.io",
+      auth: {
+        token: token,
+      },
+      reconnection: true,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
+      reconnectionAttempts: 5,
+      transports: ["websocket", "polling"],
+    })
 ```
 
 ```python
