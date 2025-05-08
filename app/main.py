@@ -13,6 +13,7 @@ from app.core.middlewares import ErrorHandlingMiddleware, RateLimitMiddleware
 from app.core.exceptions import AppBaseException
 from app.api.routes import router as api_router
 from app.auth.router import router as auth_router
+from app.api.socketio import socket_manager  # Import Socket.IO manager
 from app.services.database import connect_to_mongodb, close_mongodb_connection
 from app.core.metrics import MetricsMiddleware, metrics_endpoint
 from app.services.database import get_database
@@ -172,6 +173,8 @@ async def root():
 async def favicon():
     return FileResponse(favicon_path)
 
+# Mount Socket.IO app - sửa lại để hoạt động đúng
+app.mount('/', socket_manager.app)
 
 if __name__ == "__main__":
     # Check if HTTPS is enabled

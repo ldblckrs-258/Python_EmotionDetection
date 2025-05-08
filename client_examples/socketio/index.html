@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Socket.IO Emotion Detection Test</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        margin: 20px;
+        line-height: 1.6;
+      }
+      .container {
+        max-width: 1200px;
+        margin: 0 auto;
+      }
+      .flex-box {
+        display: flex;
+        gap: 20px;
+      }
+      .flex-1 {
+        flex: 1;
+      }
+      .video-container {
+        position: relative;
+        margin-bottom: 20px;
+        width: 488px;
+      }
+      #videoElement {
+        width: 488px;
+        height: 336px;
+        border: 1px solid #ccc;
+      }
+      #overlayCanvas {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 488px;
+        height: 336px;
+        pointer-events: none;
+      }
+      .controls {
+        margin-bottom: 20px;
+      }
+      button {
+        padding: 8px 16px;
+        margin-right: 10px;
+        background-color: #4caf50;
+        color: white;
+        border: none;
+        cursor: pointer;
+      }
+      button:hover {
+        background-color: #45a049;
+      }
+      button:disabled {
+        background-color: #cccccc;
+        cursor: not-allowed;
+      }
+      #logContainer {
+        height: 200px;
+        overflow-y: auto;
+        border: 1px solid #ccc;
+        padding: 10px;
+        background-color: #f8f8f8;
+      }
+      .log-entry {
+        margin-bottom: 5px;
+        border-bottom: 1px solid #eee;
+        padding-bottom: 5px;
+      }
+      .emotion-results {
+        margin-top: 20px;
+      }
+      .face {
+        border: 1px solid #ddd;
+        padding: 10px;
+        margin-bottom: 10px;
+        background-color: #f9f9f9;
+      }
+      .emotion-bar {
+        height: 20px;
+        background-color: #4caf50;
+        margin-bottom: 5px;
+      }
+      .emotion-label {
+        display: flex;
+        justify-content: space-between;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>Socket.IO Emotion Detection Test</h1>
+
+      <div class="connection-settings">
+        <h2>Connection Settings</h2>
+        <div>
+          <label for="serverUrl">Server URL:</label>
+          <input
+            type="text"
+            id="serverUrl"
+            value="http://localhost:2508"
+            style="width: 300px"
+          />
+        </div>
+        <div>
+          <label for="token">JWT Token:</label>
+          <input
+            type="text"
+            id="token"
+            placeholder="JWT token for authentication"
+            style="width: 300px"
+            value="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJUcTVtRmFCZVRzTmJocTd3NndXRnk0d01wdEkyIiwiZXhwIjoxNzQ2NzMwOTk2fQ.BFtWFIsvP7hJVAHVzDezG1zlBUeUU4Av7PvmGNcRmCk"
+          />
+        </div>
+        <button id="connectBtn">Connect</button>
+        <button id="disconnectBtn" disabled>Disconnect</button>
+      </div>
+      <div class="flex-box">
+        <div class="flex-1">
+          <div class="video-container">
+            <video id="videoElement" autoplay playsinline></video>
+            <canvas id="overlayCanvas"></canvas>
+          </div>
+
+          <div class="controls">
+            <button id="startBtn" disabled>Start Processing</button>
+            <button id="stopBtn" disabled>Stop Processing</button>
+          </div>
+        </div>
+        <div class="flex-1">
+          <div class="emotion-results" id="emotionResults">
+            <h2>Emotion Results</h2>
+            <div id="facesContainer"></div>
+          </div>
+
+          <div class="logs">
+            <h2>Event Logs</h2>
+            <div id="logContainer"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Load Socket.IO client -->
+    <script src="https://cdn.socket.io/4.7.4/socket.io.min.js"></script>
+    <script src="socket-client.js"></script>
+  </body>
+</html>
