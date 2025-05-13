@@ -53,8 +53,8 @@ class Settings(BaseSettings):
     ALGORITHM: str = os.getenv("ALGORITHM", "HS256")
     
     # Guest usage limits
-    GUEST_MAX_USAGE: int = int(os.getenv("GUEST_MAX_USAGE", "5"))
-    GUEST_WINDOW_SECONDS: int = int(os.getenv("GUEST_WINDOW_SECONDS", "3600"))  # 1 hour
+    GUEST_MAX_USAGE: int = int(os.getenv("GUEST_MAX_USAGE", "3"))
+    GUEST_WINDOW_SECONDS: int = int(os.getenv("GUEST_WINDOW_SECONDS", "86400"))  # 1 day
     MAX_BATCH_SIZE: int = int(os.getenv("MAX_BATCH_SIZE", "4"))
     
     # Logging settings

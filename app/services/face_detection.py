@@ -26,7 +26,7 @@ FACE_DETECT_CONFIDENCE = float(getattr(settings, "FACE_DETECT_CONFIDENCE", 1.15)
 FACE_DETECT_MIN_NEIGHBORS = int(getattr(settings, "FACE_DETECT_MIN_NEIGHBORS", 7))
 FACE_DETECT_MIN_SIZE = int(getattr(settings, "FACE_DETECT_MIN_SIZE", 64))  # minSize for detectMultiScale
 # Padding factor to expand the detected face regions
-FACE_PADDING_FACTOR = float(getattr(settings, "FACE_PADDING_FACTOR", 0.4))  # 40% expansion by default
+FACE_PADDING_FACTOR = float(getattr(settings, "FACE_PADDING_FACTOR", 0.2))  # 20% expansion by default
 
 # Tạo một alternative cascade để thử nghiệm nếu detection không tốt
 ALT_HAAR_CASCADE_PATH = cv2.data.haarcascades + 'haarcascade_frontalface_alt2.xml'
@@ -64,7 +64,7 @@ def expand_bounding_box(x, y, w, h, padding_factor=FACE_PADDING_FACTOR, img_widt
     
     Args:
         x, y, w, h: Original bounding box coordinates
-        padding_factor: Factor by which to expand the box (e.g., 0.4 means 40% larger)
+        padding_factor: Factor by which to expand the box (e.g., 0.2 means 20% larger)
         img_width, img_height: Optional image dimensions to constrain the box
         
     Returns:
@@ -74,14 +74,16 @@ def expand_bounding_box(x, y, w, h, padding_factor=FACE_PADDING_FACTOR, img_widt
     padding_w = int(w * padding_factor)
     padding_h = int(h * padding_factor)
     
-    # Add more padding to top to include forehead
-    top_padding = int(padding_h * 1.5)  # 50% more padding on top
+    # Thêm nhiều padding ở phía dưới để bao gồm cả cằm và phần dưới mặt
+    # Cân bằng lại padding giữa trên và dưới
+    top_padding = int(padding_h * 0.5)     # Giảm padding phía trên
+    bottom_padding = int(padding_h * 1.5)  # Tăng padding phía dưới
     
     # Calculate new box
     new_x = max(0, x - padding_w // 2)
     new_y = max(0, y - top_padding)
     new_w = w + padding_w
-    new_h = h + padding_h + top_padding // 2
+    new_h = h + top_padding + bottom_padding  # Sử dụng cả top và bottom padding
     
     # Ensure box doesn't exceed image boundaries if dimensions are provided
     if img_width is not None and img_height is not None:
