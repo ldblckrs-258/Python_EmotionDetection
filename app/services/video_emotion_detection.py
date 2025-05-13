@@ -10,7 +10,6 @@ import torch
 from PIL import Image
 from typing import Dict, List, Tuple, Optional, Any, Union
 from collections import deque
-import logging
 import os
 
 from app.services.face_detection import detect_faces, crop_faces
@@ -20,9 +19,6 @@ from app.domain.models.detection import DetectionResult, EmotionScore, FaceDetec
 from app.core.metrics import realtime_fps_gauge
 from app.core.config import settings
 
-# Thiết lập logging
-logger = logging.getLogger(__name__)
-
 # Cấu hình mặc định cho xử lý video frames
 DEFAULT_VIDEO_CONFIG = {
     "detection_interval": 1,       # Luôn detect khuôn mặt trên mỗi frame 
@@ -30,8 +26,6 @@ DEFAULT_VIDEO_CONFIG = {
     "processing_resolution": (480, 360),  # Giảm độ phân giải xử lý để tăng tốc độ xử lý realtime
     "detection_confidence": 1.1,   # Tăng lên để giảm false positives
     "min_neighbors": 5,            # Tăng lên để giảm false positives 
-    "smooth_emotions": True,       # Áp dụng emotion smoothing
-    "smooth_window_size": 3,       # Kích thước cửa sổ trượt cho smoothing
     "return_bounding_boxes": True, # Trả về bounding box trong kết quả
     "prioritize_realtime": True    # Ưu tiên realtime thay vì FPS cao
 }
@@ -42,80 +36,6 @@ DEBUG_IMAGE_DIR = 'logs/debug_images'
 
 if SAVE_DEBUG_IMAGES:
     os.makedirs(DEBUG_IMAGE_DIR, exist_ok=True)
-
-class EmotionWindowTracker:
-    """
-    Track emotion scores over a window of frames and provide smoothed scores.
-    """
-    def __init__(self, window_size: int = 3):
-        self.window_size = window_size
-        self.face_emotions: Dict[str, Dict[str, deque]] = {}
-    
-    def update(self, face_id: str, emotions: List[EmotionScore]):
-        """
-        Update emotion scores for a face.
-        
-        Args:
-            face_id: Unique face identifier
-            emotions: List of emotion scores for the current frame
-        """
-        # Khởi tạo face_id nếu chưa có
-        if face_id not in self.face_emotions:
-            self.face_emotions[face_id] = {}
-            
-        # Cập nhật điểm cho mỗi emotion
-        for emotion in emotions:
-            label = emotion.emotion
-            score = emotion.score
-            
-            if label not in self.face_emotions[face_id]:
-                self.face_emotions[face_id][label] = deque(maxlen=self.window_size)
-                
-            self.face_emotions[face_id][label].append(score)
-    
-    def get_smoothed_emotions(self, face_id: str) -> List[EmotionScore]:
-        """
-        Get smoothed emotion scores for a face using weighted average.
-        
-        Args:
-            face_id: Unique face identifier
-            
-        Returns:
-            List of smoothed emotion scores
-        """
-        if face_id not in self.face_emotions:
-            return []
-        
-        face_data = self.face_emotions[face_id]
-        smoothed_scores = []
-        
-        for label, scores in face_data.items():
-            if not scores:
-                continue
-                
-            # Weighted average - đánh trọng số cao hơn cho frame mới nhất
-            weights = np.linspace(0.5, 1.0, len(scores))
-            weights = weights / np.sum(weights)  # Normalize
-            
-            score = float(np.sum(np.array(scores) * weights))
-            smoothed_scores.append(EmotionScore(
-                emotion=label,
-                score=score,
-                percentage=score * 100
-            ))
-        
-        # Sắp xếp theo score cao nhất
-        smoothed_scores.sort(key=lambda x: x.score, reverse=True)
-        return smoothed_scores
-        
-    def clean_up_old_faces(self, current_face_ids: List[str]):
-        """
-        Remove data for faces that are no longer tracked.
-        """
-        for face_id in list(self.face_emotions.keys()):
-            if face_id not in current_face_ids:
-                del self.face_emotions[face_id]
-
 
 class VideoEmotionDetector:
     """
@@ -131,11 +51,6 @@ class VideoEmotionDetector:
         self.config = DEFAULT_VIDEO_CONFIG.copy()
         if config:
             self.config.update(config)
-            
-        # Khởi tạo emotion smoother
-        self.emotion_smoother = EmotionWindowTracker(
-            window_size=self.config["smooth_window_size"]
-        )
         
         # Khởi tạo các biến theo dõi hiệu suất
         self.frame_count = 0
@@ -163,7 +78,6 @@ class VideoEmotionDetector:
         """
         start_time = time.time()
         
-        # Giảm logging để tăng hiệu suất
         frame_id = frame_data.get("frame_id")
         timestamp = frame_data.get("timestamp", time.time())
         base64_data = frame_data.get("data")
@@ -180,7 +94,6 @@ class VideoEmotionDetector:
             frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
             
             if frame is None:
-                logger.error(f"Failed to decode frame {frame_id}")
                 raise ValueError("Invalid frame data after decoding")
                 
             # Lưu ảnh gốc nếu debug được bật (nhưng chỉ lưu 1 trong 10 frame để giảm I/O)
@@ -189,7 +102,6 @@ class VideoEmotionDetector:
                 cv2.imwrite(debug_original_path, frame)
                 
         except Exception as e:
-            logger.error(f"Error decoding frame {frame_id}: {str(e)}")
             raise ValueError(f"Failed to decode frame: {str(e)}")
             
         # Resize frame để xử lý nhanh hơn
@@ -217,7 +129,6 @@ class VideoEmotionDetector:
                 resize_scale = 1.0
                 
         except Exception as e:
-            logger.error(f"Error resizing frame {frame_id}")
             processing_frame = frame
             resize_scale = 1.0
         
@@ -306,7 +217,6 @@ class VideoEmotionDetector:
                     self.face_ids[face_id] = (center_x, center_y)
                 
         except Exception as e:
-            logger.error(f"Error in face detection for frame {frame_id}")
             face_boxes = []
             face_ids = []
             original_boxes = []
@@ -360,28 +270,13 @@ class VideoEmotionDetector:
                         # Sắp xếp theo điểm cao nhất
                         emotion_scores.sort(key=lambda x: x.score, reverse=True)
                         
-                        # Cập nhật emotion smoother
-                        if self.config["smooth_emotions"]:
-                            self.emotion_smoother.update(face_id, emotion_scores)
-                            smoothed_scores = self.emotion_smoother.get_smoothed_emotions(face_id)
-                            
-                            # Nếu có kết quả smoothed, sử dụng chúng
-                            if smoothed_scores:
-                                emotion_scores = smoothed_scores
-                        
                         # Tạo FaceDetection object
                         face_detections.append(FaceDetection(
                             box=box if self.config["return_bounding_boxes"] else None,
                             emotions=emotion_scores,
                             face_id=face_id
                         ))
-                        
-                    # Dọn dẹp emotion smoother cho các khuôn mặt không còn theo dõi
-                    if self.config["smooth_emotions"]:
-                        self.emotion_smoother.clean_up_old_faces(face_ids)
             except Exception as e:
-                logger.error(f"Error processing emotions for frame {frame_id}")
-                # Reset face_detected nếu xử lý cảm xúc thất bại
                 face_detected = len(face_detections) > 0
         
         # Tính thời gian xử lý
@@ -431,24 +326,6 @@ class VideoEmotionDetector:
             new_config: Dictionary with new configuration values
         """
         self.config.update(new_config)
-        
-        # Cập nhật các thuộc tính liên quan
-        if "smooth_window_size" in new_config:
-            # Khởi tạo lại emotion smoother với kích thước cửa sổ mới
-            old_smoother = self.emotion_smoother
-            self.emotion_smoother = EmotionWindowTracker(window_size=new_config["smooth_window_size"])
-            
-            # Copy dữ liệu từ smoother cũ (tối đa theo kích thước cửa sổ mới)
-            for face_id, emotions in old_smoother.face_emotions.items():
-                for label, scores in emotions.items():
-                    for score in list(scores)[-new_config["smooth_window_size"]:]:
-                        if face_id not in self.emotion_smoother.face_emotions:
-                            self.emotion_smoother.face_emotions[face_id] = {}
-                        if label not in self.emotion_smoother.face_emotions[face_id]:
-                            self.emotion_smoother.face_emotions[face_id][label] = deque(
-                                maxlen=new_config["smooth_window_size"]
-                            )
-                        self.emotion_smoother.face_emotions[face_id][label].append(score)
     
     def get_performance_metrics(self) -> Dict[str, Any]:
         """

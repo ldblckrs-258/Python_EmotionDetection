@@ -1,6 +1,5 @@
-from typing import Dict, List, Optional
+from typing import List, Optional
 from datetime import datetime
-import uuid
 from app.domain.models.detection import DetectionResponse
 from app.infrastructure.database.repository import DetectionRepository
 from app.services.database import get_collection

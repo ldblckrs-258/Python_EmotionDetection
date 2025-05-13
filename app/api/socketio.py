@@ -2,14 +2,9 @@
 Socket.IO handler for realtime emotion detection.
 """
 import socketio
-import jwt
 import time
-import asyncio
-import base64
 import numpy as np
-import copy
-from typing import Dict, Any, Optional, List
-from pydantic import BaseModel
+from typing import Dict, Any,List
 import logging
 
 from app.core.config import settings
@@ -264,82 +259,26 @@ class SocketManager:
                     logger.warning(f"No frame data provided from client {sid}")
                     return
                 
-                # Log thông tin nhận frame một cách ngắn gọn
                 frame_id = data.get('frame_id', 'unknown')
                 
                 # Lưu frame mới nhất
                 self.latest_frames[sid] = data
                 
-                # Nếu đang xử lý frame khác, bỏ qua frame hiện tại
-                # để ưu tiên xử lý frame mới nhất khi xong
                 if self.processing_frames.get(sid, False):
                     logger.debug(f"Skipping frame {frame_id} for client {sid}, another frame is being processed")
                     return
                     
-                # Đánh dấu đang xử lý frame
                 self.processing_frames[sid] = True
                 
-                # Xử lý frame
                 try:
                     # Lấy frame mới nhất
                     latest_frame = self.latest_frames[sid]
-                    latest_frame_id = latest_frame.get('frame_id', 'unknown')
-                    
+
                     # Xử lý frame với VideoEmotionDetector
-                    result = await self._process_frame(sid, latest_frame)
-                    
-                    if result:
-                        face_count = len(result.get('faces', []))
-                        proc_time = result.get('processing_time', 0)
-                        
-                        # Chỉ log khi phát hiện được khuôn mặt hoặc định kỳ
-                        if face_count > 0:
-                            logger.info(f"Frame {latest_frame_id}: DETECTED {face_count} faces, time={proc_time:.4f}s")
-                        elif int(latest_frame_id) % 30 == 0:
-                            logger.debug(f"Frame {latest_frame_id}: Stats - time={proc_time:.4f}s")
-                        
-                        # Gửi kết quả về client
-                        await sio.emit('detection_result', result, room=sid, namespace=self.namespace)
-                        
-                        # Định kỳ gửi thông tin hiệu suất và đề xuất tối ưu
-                        if self.detectors[sid].frame_count % 30 == 0:
-                            metrics = self.detectors[sid].get_performance_metrics()
-                            
-                            # Kiểm tra độ trễ quá cao
-                            average_processing_time = metrics.get('average_processing_time', 0)
-                            if average_processing_time > 0.5:  # Nếu xử lý trung bình > 500ms
-                                suggested_config = {}
-                                current_width, current_height = self.detectors[sid].config['processing_resolution']
-                                
-                                # Đề xuất giảm độ phân giải
-                                if current_width > 320:
-                                    suggested_config['processing_resolution'] = (
-                                        int(current_width * 0.7),
-                                        int(current_height * 0.7)
-                                    )
-                                    
-                                    await sio.emit('performance_suggestion', {
-                                        'code': 200,
-                                        'message': 'High latency detected. Consider reducing resolution for better realtime performance.',
-                                        'suggested_config': suggested_config,
-                                        'timestamp': time.time()
-                                    }, room=sid, namespace=self.namespace)
-                            
-                            # Gửi metrics
-                            await sio.emit('status', {
-                                'code': 200,
-                                'message': 'Processing metrics',
-                                'timestamp': time.time(),
-                                'metrics': metrics
-                            }, room=sid, namespace=self.namespace)
+                    await self._process_frame(sid, latest_frame)
+
                 finally:
-                    # Đánh dấu đã xong xử lý frame
                     self.processing_frames[sid] = False
-                    
-                    # Nếu có frame mới đến trong lúc xử lý, xử lý tiếp frame mới nhất
-                    if sid in self.latest_frames and self.latest_frames[sid] != latest_frame:
-                        logger.debug(f"Processing next frame immediately for client {sid}")
-                        asyncio.create_task(self.video_frame(sid, self.latest_frames[sid]))
                     
             except Exception as e:
                 logger.error(f"Video frame error: {str(e)}")

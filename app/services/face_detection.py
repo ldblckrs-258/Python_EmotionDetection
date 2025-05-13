@@ -25,6 +25,8 @@ except AttributeError:
 FACE_DETECT_CONFIDENCE = float(getattr(settings, "FACE_DETECT_CONFIDENCE", 1.15))  # scaleFactor
 FACE_DETECT_MIN_NEIGHBORS = int(getattr(settings, "FACE_DETECT_MIN_NEIGHBORS", 7))
 FACE_DETECT_MIN_SIZE = int(getattr(settings, "FACE_DETECT_MIN_SIZE", 64))  # minSize for detectMultiScale
+# Padding factor to expand the detected face regions
+FACE_PADDING_FACTOR = float(getattr(settings, "FACE_PADDING_FACTOR", 0.4))  # 40% expansion by default
 
 # Tạo một alternative cascade để thử nghiệm nếu detection không tốt
 ALT_HAAR_CASCADE_PATH = cv2.data.haarcascades + 'haarcascade_frontalface_alt2.xml'
@@ -55,10 +57,46 @@ def cv2_to_pil(arr: np.ndarray) -> Image.Image:
         return Image.fromarray(arr)
     return Image.fromarray(cv2.cvtColor(arr, cv2.COLOR_BGR2RGB))
 
+def expand_bounding_box(x, y, w, h, padding_factor=FACE_PADDING_FACTOR, img_width=None, img_height=None) -> Tuple[int, int, int, int]:
+    """
+    Expands the face bounding box by the specified padding factor.
+    Also ensures the box doesn't go outside image boundaries if dimensions are provided.
+    
+    Args:
+        x, y, w, h: Original bounding box coordinates
+        padding_factor: Factor by which to expand the box (e.g., 0.4 means 40% larger)
+        img_width, img_height: Optional image dimensions to constrain the box
+        
+    Returns:
+        Tuple of (x, y, w, h) for the expanded box
+    """
+    # Calculate padding amount
+    padding_w = int(w * padding_factor)
+    padding_h = int(h * padding_factor)
+    
+    # Add more padding to top to include forehead
+    top_padding = int(padding_h * 1.5)  # 50% more padding on top
+    
+    # Calculate new box
+    new_x = max(0, x - padding_w // 2)
+    new_y = max(0, y - top_padding)
+    new_w = w + padding_w
+    new_h = h + padding_h + top_padding // 2
+    
+    # Ensure box doesn't exceed image boundaries if dimensions are provided
+    if img_width is not None and img_height is not None:
+        if new_x + new_w > img_width:
+            new_w = img_width - new_x
+        if new_y + new_h > img_height:
+            new_h = img_height - new_y
+    
+    return (int(new_x), int(new_y), int(new_w), int(new_h))
+
 def detect_faces(
     img,
     scale_factor: float = FACE_DETECT_CONFIDENCE,
-    min_neighbors: int = FACE_DETECT_MIN_NEIGHBORS
+    min_neighbors: int = FACE_DETECT_MIN_NEIGHBORS,
+    padding_factor: float = FACE_PADDING_FACTOR
 ) -> List[Tuple[int, int, int, int]]:
     """
     Detect faces in a PIL image or numpy array.
@@ -70,6 +108,9 @@ def detect_faces(
             cv_img = img
         else:
             cv_img = pil_to_cv2(img)
+        
+        # Lấy kích thước ảnh để giới hạn bounding box
+        img_height, img_width = cv_img.shape[:2]
         
         # Chuyển đổi sang grayscale cho detection
         gray = cv2.cvtColor(cv_img, cv2.COLOR_BGR2GRAY)
@@ -132,11 +173,15 @@ def detect_faces(
                 flags=cv2.CASCADE_SCALE_IMAGE,
                 minSize=(min_face_size // 2, min_face_size // 2)  # Giảm kích thước tối thiểu
             )
-            
-        # Loại bỏ bước cuối cùng với cài đặt quá nhạy để tránh false positives
+        
+        # Mở rộng các bounding box để bao quát toàn bộ phần đầu
+        expanded_faces = [
+            expand_bounding_box(x, y, w, h, padding_factor, img_width, img_height)
+            for (x, y, w, h) in faces
+        ]
         
         # Trả về kết quả với các box được convert sang integer
-        return [(int(x), int(y), int(w), int(h)) for (x, y, w, h) in faces]
+        return [(int(x), int(y), int(w), int(h)) for (x, y, w, h) in expanded_faces]
     except Exception as e:
         logger.error(f"Error in face detection: {str(e)}")
         return []
