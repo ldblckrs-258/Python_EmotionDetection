@@ -1,90 +1,98 @@
 # Face Emotion Detection API
 
-A backend service that detects emotions from facial images using FastAPI, MongoDB, Cloudinary, and Firebase Authentication with a pre-trained Hugging Face model.
+A backend service that detects emotions from facial images and video streams using FastAPI, MongoDB, Cloudinary, and Firebase Authentication with a pre-trained Hugging Face model.
 
 ## Features
 
-- Emotion detection from uploaded images with percentage scores
-- User authentication with Firebase
-- Image storage with Cloudinary
-- Detection history stored in MongoDB Atlas
-- Docker containerization
+- **Image Detection**: Analyze emotions from uploaded images with percentage scores
+- **Realtime Video Detection**: Process video streams via Socket.IO with efficient face tracking
+- **Authentication**: Secure access with Firebase Authentication
+- **Storage**: Store images in Cloudinary and detection history in MongoDB Atlas
+- **Containerization**: Easy deployment with Docker and Docker Compose
 
 ## Tech Stack
 
 - **Backend Framework**: FastAPI
-- **Programming Language**: Python
+- **Realtime Communication**: Socket.IO
 - **Database**: MongoDB Atlas
 - **Image Storage**: Cloudinary
 - **Authentication**: Firebase Authentication
-- **AI Model**: Hugging Face model - dima806/facial_emotions_image_detection
+- **AI Models**:
+  - Image analysis: Hugging Face model - dima806/facial_emotions_image_detection
+  - Face detection: OpenCV Haar Cascade
 - **Containerization**: Docker & Docker Compose
 
-## Workflow Pipeline
+## Detection Pipeline
 
-### Face Detection and Emotion Recognition Process
+### Image-Based Emotion Detection
 
 1. **Image Upload & Validation**
 
-   - User uploads an image via the API
-   - System validates image format and size (max 5MB)
-   - Image is converted to RGB format for processing
+   - Validate image format and size (max 5MB)
+   - Convert to RGB format
 
 2. **Face Detection**
 
-   - OpenCV's Haar Cascade classifier detects faces in the image
-   - Each detected face is isolated with its bounding box coordinates (x, y, width, height)
-   - Face coordinates are saved for frontend visualization
+   - OpenCV's Haar Cascade classifier locates faces
+   - Each face is isolated with bounding box coordinates
 
 3. **Face Preprocessing**
 
-   - Detected faces are cropped from the original image
-   - Each face is resized to 224x224 pixels
-   - Pixel values are normalized to the range [0,1]
+   - Detected faces are cropped and resized to 224x224 pixels
+   - Pixel values are normalized to range [0,1]
 
-4. **Emotion Detection**
+4. **Emotion Analysis**
 
-   - Pre-trained model (`dima806/facial_emotions_image_detection`) processes each face
-   - Vision Transformer (ViT) architecture analyzes facial features
+   - Pre-trained Vision Transformer (ViT) model processes each face
    - Model outputs probability scores for 7 emotions:
      - Happy, Sad, Angry, Disgust, Fear, Surprise, Neutral
 
-5. **Result Processing**
+5. **Result Processing & Storage**
+   - Original image stored in Cloudinary
+   - Results saved in MongoDB with user association
 
-   - Emotion probabilities are converted to percentages
-   - Results are sorted by confidence score
-   - Processing time is calculated
+### Realtime Video Stream Detection
 
-6. **Storage & Response**
-   - Original image is stored in Cloudinary
-   - Detection results are saved in MongoDB with user association
-   - Response includes face locations, emotion scores, and image URL
-   - Detection history is accessible through API endpoints
+1. **Socket.IO Connection**
+
+   - Client establishes WebSocket connection
+   - Firebase token authentication
+   - Session configuration with adjustable parameters
+
+2. **Video Frame Processing**
+
+   - Client streams video frames as base64-encoded images
+   - Server processes frames with optimized pipeline
+   - Face tracking across frames with stable face IDs
+
+3. **Performance Optimization**
+
+   - Auto-adjusts processing resolution based on performance
+   - Configurable frame rate and detection parameters
+   - Prioritizes real-time performance when needed
+
+4. **Realtime Results**
+   - Emotion detection results streamed back to client
+   - Performance metrics including FPS and latency
+   - Face tracking information for UI visualization
 
 ## Setup Instructions
 
 ### Prerequisites
 
 - Python 3.10 or higher
-- Docker and Docker Compose (optional, for containerized deployment)
+- Docker and Docker Compose (optional)
 - MongoDB Atlas account
 - Cloudinary account
 - Firebase project
 
 ### Environment Variables
 
-Create a `.env` file based on the `.env.example` template and fill in your credentials:
+Create a `.env` file based on the `.env.example` template.
 
-```
-# Copy the .env.example file
-cp .env.example .env
+### Local Development
 
-# Edit the .env file with your actual credentials
-```
-
-### Local Development Setup
-
-1. Create a virtual environment and activate it:
+1. Create a virtual environment:
 
 ```bash
 python -m venv .venv
@@ -105,289 +113,64 @@ uvicorn app.main:app --reload --port 2508
 
 The API will be available at `http://localhost:2508`.
 
-### Docker Setup
+### Docker Deployment
 
-1. Build and start the Docker containers:
+Build and start the Docker containers:
 
 ```bash
 docker-compose up -d
 ```
 
-The API will be available at `http://localhost:2508`.
-
 ## API Documentation
 
-Once the application is running, you can access the interactive API documentation:
+Once running, access the interactive API documentation:
 
 - Swagger UI: `http://localhost:2508/docs`
 - ReDoc: `http://localhost:2508/redoc`
-
-The API supports two authentication modes:
-
-- **Authenticated Users**: Firebase Authentication with JWT tokens
-- **Guest Users**: Limited to 5 detection requests per hour, tracked via cookies
 
 ## API Endpoints
 
 ### Authentication
 
-#### `POST /auth/verify-token`
+- `POST /auth/verify-token`: Verify Firebase token
+- `GET /auth/profile`: Get user profile
+- `GET /auth/usage`: Get usage statistics
+- `POST /auth/refresh-token`: Refresh access token
 
-Verifies a Firebase ID token and returns a JWT access token.
+### Image Detection
 
-**Request Body:**
+- `POST /api/detect`: Analyze emotions from an uploaded image
+- `POST /api/detect/batch`: Process multiple images (authentication required)
+- `GET /api/history`: Get detection history
+- `GET /api/history/{id}`: Get specific detection details
+- `DELETE /api/history/{id}`: Delete detection record
 
-```json
-{
-  "id_token": "firebase_id_token_from_client"
-}
-```
+### Socket.IO Realtime Detection
 
-**Response:**
+Connect to WebSocket endpoint at `/emotion-detection` for realtime video processing:
 
-```json
-{
-  "message": "Token verified",
-  "user": {
-    "user_id": "firebase_user_id",
-    "email": "user@example.com",
-    "display_name": "User Name",
-    "is_guest": false,
-    "is_email_verified": true,
-    "providers": ["password", "google.com"]
-  },
-  "access_token": "jwt_access_token",
-  "token_type": "bearer"
-}
-```
+#### Connection Events
 
-#### `GET /auth/profile`
+- `connect`: Establish connection with authentication token
+- `initialize`: Configure the detection session
+- `control`: Control detection (start/stop/configure)
+- `video_frame`: Send video frame for processing
 
-Returns the authenticated user's profile information.
+#### Response Events
 
-**Headers:**
+- `detection_result`: Emotion detection results
+- `status`: Session status updates
+- `performance_suggestion`: Optimization recommendations
+- `error_message`: Error notifications
 
-```
-Authorization: Bearer {access_token}
-```
+## Model Performance
 
-**Response:**
+The emotion detection model achieves approximately 91% accuracy on the FER2013 dataset.
 
-```json
-{
-  "user_id": "firebase_user_id",
-  "email": "user@example.com",
-  "display_name": "User Name",
-  "photo_url": "https://example.com/photo.jpg",
-  "is_guest": false,
-  "is_email_verified": true,
-  "providers": ["password"]
-}
-```
-
-#### `GET /auth/usage`
-
-Returns the user's usage statistics.
-
-**Headers:**
+### Classification Report
 
 ```
-Authorization: Bearer {access_token}
-```
-
-**Response:**
-
-```json
-{
-  "user_id": "firebase_user_id",
-  "is_guest": false,
-  "usage_count": 10,
-  "max_usage": null
-}
-```
-
-#### `POST /auth/refresh-token`
-
-Refreshes an expired access token using a refresh token.
-
-**Request Body:**
-
-```json
-{
-  "refresh_token": "jwt_refresh_token"
-}
-```
-
-**Response:**
-
-```json
-{
-  "access_token": "new_jwt_access_token",
-  "token_type": "bearer"
-}
-```
-
-### Emotion Detection
-
-#### `POST /api/detect`
-
-Uploads an image and returns emotion detection results.
-
-**Headers:**
-
-```
-Authorization: Bearer {access_token} (optional)
-Content-Type: multipart/form-data
-```
-
-**Request Body:**
-
-```
-file: [binary image data]
-```
-
-**Response:**
-
-```json
-{
-  "detection_id": "123456abcdef",
-  "user_id": "user123",
-  "timestamp": "2024-01-01T00:00:00",
-  "image_url": "https://res.cloudinary.com/demo/image/upload/v1312461204/sample.jpg",
-  "detection_results": {
-    "faces": [
-      {
-        "box": [10, 20, 100, 100],
-        "emotions": [
-          { "emotion": "happy", "score": 0.92, "percentage": 92.0 },
-          { "emotion": "sad", "score": 0.05, "percentage": 5.0 },
-          { "emotion": "neutral", "score": 0.03, "percentage": 3.0 }
-        ]
-      }
-    ],
-    "face_detected": true,
-    "processing_time": 0.235
-  }
-}
-```
-
-#### `POST /api/detect/batch`
-
-Uploads multiple images and returns streaming results. Only authenticated users can use this endpoint.
-
-**Headers:**
-
-```
-Authorization: Bearer {access_token} (required)
-Content-Type: multipart/form-data
-Accept: text/event-stream
-```
-
-**Request Body:**
-
-```
-files: [multiple binary image data]
-```
-
-**Response:**
-Server-Sent Events stream where each event is a detection result.
-
-#### `GET /api/history`
-
-Returns the user's detection history.
-
-**Headers:**
-
-```
-Authorization: Bearer {access_token}
-```
-
-**Query Parameters:**
-
-- `page` (optional): Page number for pagination, default 1
-- `limit` (optional): Results per page, default 10
-
-**Response:**
-
-```json
-{
-  "items": [
-    {
-      "detection_id": "123456abcdef",
-      "user_id": "user123",
-      "timestamp": "2024-01-01T00:00:00",
-      "image_url": "https://res.cloudinary.com/demo/image/upload/v1312461204/sample.jpg"
-    }
-  ],
-  "total": 15,
-  "page": 1,
-  "pages": 2,
-  "limit": 10
-}
-```
-
-#### `GET /api/history/{id}`
-
-Returns details of a specific detection.
-
-**Headers:**
-
-```
-Authorization: Bearer {access_token}
-```
-
-**Response:**
-
-```json
-{
-  "detection_id": "123456abcdef",
-  "user_id": "user123",
-  "timestamp": "2024-01-01T00:00:00",
-  "image_url": "https://res.cloudinary.com/demo/image/upload/v1312461204/sample.jpg",
-  "detection_results": {
-    "faces": [
-      {
-        "box": [10, 20, 100, 100],
-        "emotions": [
-          { "emotion": "happy", "score": 0.92, "percentage": 92.0 },
-          { "emotion": "sad", "score": 0.05, "percentage": 5.0 }
-        ]
-      }
-    ],
-    "face_detected": true,
-    "processing_time": 0.235
-  }
-}
-```
-
-#### `DELETE /api/history/{id}`
-
-Deletes a specific detection record.
-
-**Headers:**
-
-```
-Authorization: Bearer {access_token}
-```
-
-**Response:**
-
-```json
-{
-  "message": "Detection deleted successfully",
-  "detection_id": "123456abcdef"
-}
-```
-
-## Model Information
-
-The model used for emotion detection is `dima806/facial_emotions_image_detection` from Hugging Face. It is a pre-trained model that can classify emotions from facial images.
-
-### Classification report
-
-```python
               precision    recall  f1-score   support
-
          sad     0.8394    0.8632    0.8511      3596
      disgust     0.9909    1.0000    0.9954      3596
        angry     0.9022    0.9035    0.9028      3595
@@ -395,28 +178,13 @@ The model used for emotion detection is `dima806/facial_emotions_image_detection
         fear     0.8788    0.8532    0.8658      3596
     surprise     0.9476    0.9449    0.9463      3596
        happy     0.9302    0.9372    0.9336      3596
-
     accuracy                         0.9092     25170
    macro avg     0.9092    0.9092    0.9091     25170
 weighted avg     0.9092    0.9092    0.9091     25170
 ```
 
-### Label Mapping
+## More Information
 
-```python
-{
-    0: "sad",
-    1: "disgust",
-    2: "angry",
-    3: "neutral",
-    4: "fear",
-    5: "surprise",
-    6: "happy"
-}
-```
+For more technical details about the model, see:
 
-### More
-
-- Returns facial emotion with about 91% accuracy based on facial human image.
-- The model is trained on the FER2013 dataset, which contains a large number of facial images labeled with different emotions. The model uses a Vision Transformer (ViT) architecture for image classification.
-- See https://www.kaggle.com/code/dima806/facial-emotions-image-detection-vit for more details.
+- [Facial Emotions Image Detection with ViT](https://www.kaggle.com/code/dima806/facial-emotions-image-detection-vit)

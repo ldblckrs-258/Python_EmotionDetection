@@ -10,7 +10,6 @@ def preprocess_face(face_img, size: Tuple[int, int] = (224, 224)):
     Trả về cùng kiểu với input (PIL hoặc numpy array).
     """
     from app.services.face_detection import cv2_to_pil
-    import numpy as np
     if isinstance(face_img, np.ndarray):
         # Nếu là numpy array (BGR hoặc RGB), chuyển sang PIL để resize
         pil_img = cv2_to_pil(face_img) if face_img.shape[-1] == 3 else Image.fromarray(face_img)

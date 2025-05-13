@@ -1,13 +1,6 @@
-# app/services/notification.py
-"""
-Simple notification system for background processing.
-This can be extended to use WebSocket, email, or polling.
-"""
 from typing import Dict
 from datetime import datetime, timedelta
 
-# In-memory notification store with timestamps
-# Store format: {detection_id: (status, timestamp)}
 notification_store: Dict[str, tuple] = {}
 
 def cleanup_old_notifications():
