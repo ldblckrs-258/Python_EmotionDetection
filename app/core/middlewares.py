@@ -7,6 +7,7 @@ from app.core.exceptions import RateLimitException
 from app.core.config import settings
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.types import ASGIApp
+from app.core.rate_limit import get_rate_limiter
 
 from app.core.exceptions import AppBaseException
 from app.core.logging import logger
@@ -117,23 +118,27 @@ class ErrorHandlingMiddleware:
 class RateLimitMiddleware(BaseHTTPMiddleware):
     """
     Middleware để giới hạn số lượng request từ một IP (hoặc guest_id) cho các endpoint nhạy cảm.
-    Chỉ áp dụng cho guest user (chưa đăng nhập).
+    Sử dụng MongoDB để lưu trữ thông tin rate limit, đảm bảo giới hạn được duy trì khi restart service.
+    Chỉ áp dụng cho guest user (không có Authorization header), người dùng đã đăng nhập không bị giới hạn.
     """
     def __init__(self, app: ASGIApp, max_requests: int = 10, window_seconds: int = 60):
         super().__init__(app)
         self.max_requests = max_requests
         self.window_seconds = window_seconds
-        self.guest_requests = {}  # {guest_id_or_ip: [timestamps]}
 
     async def dispatch(self, request: Request, call_next):
-        # Chỉ áp dụng cho endpoint /api/detect và guest user
+        # Chỉ áp dụng cho endpoint /api/detect 
         if request.url.path == f"{settings.API_PREFIX}/detect":
-            client_ip = request.client.host if request.client else "unknown"
-            
-            # Bỏ qua rate limit nếu là localhost
-            if client_ip in ("127.0.0.1", "::1", "localhost"):
+            # Kiểm tra header Authorization, nếu có thì là authenticated user, không rate limit
+            auth_header = request.headers.get("Authorization")
+            if auth_header and auth_header.startswith("Bearer "):
+                # Người dùng đã đăng nhập, không rate limit
                 return await call_next(request)
             
+            # Nếu không có auth header, coi là guest user và kiểm tra rate limit
+            client_ip = request.client.host if request.client else "unknown"
+            
+            # Lấy guest_id từ cookie
             guest_cookie = request.cookies.get("guest_usage_info")
             guest_id = None
             if guest_cookie:
@@ -143,18 +148,43 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                     guest_id = guest_info.get("guest_id")
                 except Exception:
                     pass
+            
+            # Dùng guest_id hoặc IP làm key
             key = guest_id or client_ip
-            now = time.time()
-            window_start = now - self.window_seconds
-            timestamps = self.guest_requests.get(key, [])
-            # Lọc các request còn trong window
-            timestamps = [ts for ts in timestamps if ts > window_start]
-            if len(timestamps) >= self.max_requests:
-                raise RateLimitException(
-                    message=f"Rate limit exceeded: {self.max_requests} requests per {self.window_seconds} seconds.",
-                    retry_after=int(self.window_seconds)
+            
+            # Kiểm tra rate limit sử dụng MongoRateLimiter
+            rate_limiter = get_rate_limiter()
+            is_rate_limited = await rate_limiter.check_rate_limit(
+                key=key,
+                max_requests=self.max_requests,
+                window_seconds=self.window_seconds
+            )
+            
+            # Nếu vượt giới hạn, trả về response 429
+            if is_rate_limited:
+                rate_info = await rate_limiter.get_remaining_requests(
+                    key=key,
+                    max_requests=self.max_requests,
+                    window_seconds=self.window_seconds
                 )
-            timestamps.append(now)
-            self.guest_requests[key] = timestamps
+                
+                message = f"Rate limit exceeded: {self.max_requests} requests per day."
+                logger.warning(f"Rate limit exceeded for {key}: {message}")
+                
+                return JSONResponse(
+                    status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                    content={
+                        "success": False,
+                        "message": message,
+                        "details": {
+                            "retry_after": rate_info.reset,
+                            "limit": rate_info.total,
+                            "remaining": rate_info.remaining
+                        }
+                    },
+                    headers={"Retry-After": str(rate_info.reset)}
+                )
+                
+        # Tiếp tục xử lý request nếu không bị rate limit
         response = await call_next(request)
         return response

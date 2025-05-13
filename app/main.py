@@ -6,6 +6,7 @@ from fastapi.exception_handlers import http_exception_handler
 import uvicorn
 from fastapi.openapi.utils import get_openapi
 from contextlib import asynccontextmanager
+import asyncio
 
 from app.core.config import settings
 from app.core.logging import get_logger
@@ -18,6 +19,7 @@ from app.services.database import connect_to_mongodb, close_mongodb_connection
 from app.core.metrics import MetricsMiddleware, metrics_endpoint
 from app.services.database import get_database
 from firebase_admin import auth
+from app.core.rate_limit import get_rate_limiter
 
 favicon_path = "./favicon.ico"
 
@@ -27,13 +29,40 @@ logger = get_logger("main")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-
-    logger.info("Starting up MongoDB connection")
-    await connect_to_mongodb()
-    yield
-
-    logger.info("Shutting down MongoDB connection")
-    await close_mongodb_connection()
+    # Start background task for rate limiter cleanup
+    cleanup_task = None
+    
+    async def cleanup_rate_limits():
+        while True:
+            try:
+                rate_limiter = get_rate_limiter()
+                await rate_limiter.clean_expired_records(86400)  # Clean records older than 1 day
+                logger.info("Rate limit cleanup completed")
+            except Exception as e:
+                logger.error(f"Error in rate limit cleanup: {str(e)}")
+            # Run once a day
+            await asyncio.sleep(24 * 60 * 60)  # 24 hours
+    
+    try:
+        logger.info("Starting up MongoDB connection")
+        await connect_to_mongodb()
+        
+        # Start background cleanup task
+        cleanup_task = asyncio.create_task(cleanup_rate_limits())
+        logger.info("Rate limit cleanup task started")
+        
+        yield
+    finally:
+        logger.info("Shutting down MongoDB connection")
+        await close_mongodb_connection()
+        
+        # Cancel background task
+        if cleanup_task:
+            cleanup_task.cancel()
+            try:
+                await cleanup_task
+            except asyncio.CancelledError:
+                logger.info("Rate limit cleanup task cancelled")
 
 
 def custom_openapi():
