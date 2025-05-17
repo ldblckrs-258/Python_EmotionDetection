@@ -135,9 +135,6 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                 # Người dùng đã đăng nhập, không rate limit
                 return await call_next(request)
             
-            # Nếu không có auth header, coi là guest user và kiểm tra rate limit
-            client_ip = request.client.host if request.client else "unknown"
-            
             # Lấy guest_id từ cookie
             guest_cookie = request.cookies.get("guest_usage_info")
             guest_id = None
@@ -148,9 +145,17 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                     guest_id = guest_info.get("guest_id")
                 except Exception:
                     pass
+            else:
+                # return forbidden
+                return JSONResponse(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    content={
+                        "success": False,
+                        "message": "Forbidden"
+                    }
+                )
             
-            # Dùng guest_id hoặc IP làm key
-            key = guest_id or client_ip
+            key = guest_id
             
             # Kiểm tra rate limit sử dụng MongoRateLimiter
             rate_limiter = get_rate_limiter()
