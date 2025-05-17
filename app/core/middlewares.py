@@ -8,6 +8,7 @@ from app.core.config import settings
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.types import ASGIApp
 from app.core.rate_limit import get_rate_limiter
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.exceptions import AppBaseException
 from app.core.logging import logger
@@ -192,4 +193,30 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                 
         # Tiếp tục xử lý request nếu không bị rate limit
         response = await call_next(request)
+        return response
+
+class CustomCORSMiddleware(BaseHTTPMiddleware):
+    """
+    Custom middleware để đảm bảo CORS headers được áp dụng đúng cách,
+    đặc biệt là Access-Control-Allow-Credentials và Access-Control-Allow-Origin.
+    """
+    def __init__(self, app: ASGIApp):
+        super().__init__(app)
+        # Parse CORS origins from settings
+        self.allowed_origins = []
+        if settings.CORS_ORIGINS:
+            self.allowed_origins = settings.CORS_ORIGINS.split(',')
+            
+    async def dispatch(self, request: Request, call_next):
+        # Lấy origin từ request headers
+        origin = request.headers.get("origin")
+        
+        # Xử lý request và lấy response
+        response = await call_next(request)
+        
+        # Nếu origin trong danh sách allowed_origins, thêm header
+        if origin and origin in self.allowed_origins:
+            response.headers["Access-Control-Allow-Origin"] = origin
+            response.headers["Access-Control-Allow-Credentials"] = "true"
+            
         return response

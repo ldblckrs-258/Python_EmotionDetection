@@ -10,7 +10,7 @@ import asyncio
 
 from app.core.config import settings
 from app.core.logging import get_logger
-from app.core.middlewares import ErrorHandlingMiddleware, RateLimitMiddleware
+from app.core.middlewares import ErrorHandlingMiddleware, RateLimitMiddleware, CustomCORSMiddleware
 from app.core.exceptions import AppBaseException
 from app.api.routes import router as api_router
 from app.auth.router import router as auth_router
@@ -91,23 +91,11 @@ app = FastAPI(
 
 app.openapi = custom_openapi
 
-# Add CORS middleware
-if hasattr(settings, 'CORS_ORIGINS') and settings.CORS_ORIGINS:
+# Add Prometheus metrics middleware
+app.add_middleware(MetricsMiddleware)
 
-    origins = settings.CORS_ORIGINS.split(',')
-    logger.info(f"CORS enabled for specific origins: {origins}")
-else:
-    # Development
-    origins = ["*"]
-    logger.info("CORS enabled for all origins (development mode)")
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# Add error handling middleware 
+app.add_middleware(ErrorHandlingMiddleware)
 
 # Add Rate Limit middleware
 app.add_middleware(
@@ -116,12 +104,25 @@ app.add_middleware(
     window_seconds= settings.GUEST_WINDOW_SECONDS
 )
 
-# Add error handling middleware - must be added after CORS middleware
-# so CORS is applied before error handling
-app.add_middleware(ErrorHandlingMiddleware)
+# Add CustomCORSMiddleware to ensure proper CORS headers for all responses
+app.add_middleware(CustomCORSMiddleware)
 
-# Add Prometheus metrics middleware
-app.add_middleware(MetricsMiddleware)
+# Add CORS middleware
+if hasattr(settings, 'CORS_ORIGINS') and settings.CORS_ORIGINS:
+    origins = settings.CORS_ORIGINS.split(',')
+    logger.info(f"CORS enabled for specific origins: {origins}")
+else:
+    # Development with explicitly defined origins
+    origins = ["http://localhost:3000", "http://localhost:5173", "https://emd.ducbkdn.space"]
+    logger.info(f"CORS enabled for specific development origins: {origins}")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Register exception handlers
 @app.exception_handler(AppBaseException)
