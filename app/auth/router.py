@@ -114,13 +114,12 @@ def verify_firebase_token(id_token: str) -> dict:
     try:
         decoded_token = firebase_auth.verify_id_token(id_token)
         return decoded_token
+    except ValueError as e:
+
+        raise ValueError(f"Invalid token format: {str(e)}")
     except Exception as e:
-        print(f"Firebase token verification error: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid authentication credentials",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+        # Return error instead of raising exception
+        raise ValueError(f"Token verification failed: {str(e)}")
 
 def get_user_from_firebase(firebase_user_id: str) -> dict:
     """
@@ -169,33 +168,34 @@ async def get_current_user(
 ) -> User:
     """
     Lấy thông tin người dùng hiện tại từ token hoặc cookie.
+    Đầu tiên kiểm tra bearer token, nếu không có hoặc không hợp lệ thì gọi
+    get_or_create_guest_user thay vì trả lỗi ngay lập tức.
     """
-    if not token:
-        # If no token, create or get a guest user
-        return get_or_create_guest_user(response, guest_cookie)
-    token_value = token.credentials
-    try:
-        # Try to decode JWT first
+    # Step 1: Check if bearer token exists
+    if token:
+        token_value = token.credentials
         try:
-            payload = jwt.decode(token_value, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
-            user_id = payload.get("sub")
-            if not user_id:
-                raise HTTPException(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="Invalid authentication credentials",
-                    headers={"WWW-Authenticate": "Bearer"},
-                )
-            firebase_user = get_user_from_firebase(user_id)
-            return format_firebase_user(firebase_user)
-        # If JWT decode fails, try Firebase token
-        except JWTError:
-            firebase_data = verify_firebase_token(token_value)
-            firebase_user = get_user_from_firebase(firebase_data["uid"])
-            return format_firebase_user(firebase_user)
-    except Exception as e:
-        print(f"Authentication error: {e}")
-        # If authentication fails, fall back to guest user
-        return get_or_create_guest_user(response, guest_cookie)
+            # Step 2: Try to decode JWT first
+            try:
+                payload = jwt.decode(token_value, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+                user_id = payload.get("sub")
+                if user_id:
+                    firebase_user = get_user_from_firebase(user_id)
+                    return format_firebase_user(firebase_user)
+                # If no user_id in payload, we'll fall through to guest user
+            except JWTError:
+                # Step 3: If JWT decode fails, try Firebase token
+                try:
+                    firebase_data = verify_firebase_token(token_value)
+                    firebase_user = get_user_from_firebase(firebase_data["uid"])
+                    return format_firebase_user(firebase_user)
+                except ValueError as e:
+                    print(f"Firebase token format error: {e}")
+        except Exception as e:
+            print(f"Authentication error: {str(e)}")
+    
+    # Step 4: If no token or token validation failed, create or get guest user
+    return get_or_create_guest_user(response, guest_cookie)
 
 # In-memory store for refresh tokens (demo, nên thay bằng DB ở production)
 refresh_token_store = {}
@@ -207,7 +207,15 @@ async def verify_token(token_data: FirebaseToken):
     Use this endpoint after client-side authentication with Firebase.
     """
     try:
-        decoded_token = verify_firebase_token(token_data.id_token)
+        try:
+            decoded_token = verify_firebase_token(token_data.id_token)
+        except ValueError as e:
+            # Handle specific token format errors
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail=str(e)
+            )
+            
         user = get_user_from_firebase(decoded_token["uid"])
         # Nếu user là dict (trường hợp đặc biệt), lấy uid từ dict, nếu không thì từ object
         user_uid = user["uid"] if isinstance(user, dict) and "uid" in user else getattr(user, "uid", None)
@@ -237,13 +245,14 @@ async def verify_token(token_data: FirebaseToken):
         print(f"Token verification error: {e}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid token"
+            detail=f"Invalid token: {str(e)}"
         )
 
 @router.get("/profile", response_model=User)
 async def get_profile(current_user: User = Depends(get_current_user)):
     """
     Get the profile of the current authenticated user.
+    If no valid bearer token is provided, returns guest user profile.
     """
     return current_user
 
@@ -251,6 +260,7 @@ async def get_profile(current_user: User = Depends(get_current_user)):
 async def get_usage(current_user: User = Depends(get_current_user)):
     """
     Get the usage statistics for the current user.
+    If no valid bearer token is provided, returns guest user usage info.
     """
     return {
         "user_id": current_user.user_id,

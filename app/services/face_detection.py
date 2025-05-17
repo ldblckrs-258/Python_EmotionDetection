@@ -26,7 +26,7 @@ FACE_DETECT_CONFIDENCE = float(getattr(settings, "FACE_DETECT_CONFIDENCE", 1.15)
 FACE_DETECT_MIN_NEIGHBORS = int(getattr(settings, "FACE_DETECT_MIN_NEIGHBORS", 7))
 FACE_DETECT_MIN_SIZE = int(getattr(settings, "FACE_DETECT_MIN_SIZE", 64))  # minSize for detectMultiScale
 # Padding factor to expand the detected face regions
-FACE_PADDING_FACTOR = float(getattr(settings, "FACE_PADDING_FACTOR", 0.2))  # 20% expansion by default
+FACE_PADDING_FACTOR = float(getattr(settings, "FACE_PADDING_FACTOR", 0.15))  # 20% expansion by default
 
 # Tạo một alternative cascade để thử nghiệm nếu detection không tốt
 ALT_HAAR_CASCADE_PATH = cv2.data.haarcascades + 'haarcascade_frontalface_alt2.xml'
@@ -76,14 +76,14 @@ def expand_bounding_box(x, y, w, h, padding_factor=FACE_PADDING_FACTOR, img_widt
     
     # Thêm nhiều padding ở phía dưới để bao gồm cả cằm và phần dưới mặt
     # Cân bằng lại padding giữa trên và dưới
-    top_padding = int(padding_h * 0.5)     # Giảm padding phía trên
-    bottom_padding = int(padding_h * 1.5)  # Tăng padding phía dưới
+    top_padding = int(padding_h * 0.8)     # Giảm padding phía trên
+    bottom_padding = int(padding_h * 1.2)  # Tăng padding phía dưới
     
     # Calculate new box
     new_x = max(0, x - padding_w // 2)
     new_y = max(0, y - top_padding)
     new_w = w + padding_w
-    new_h = h + top_padding + bottom_padding  # Sử dụng cả top và bottom padding
+    new_h = h + top_padding + bottom_padding
     
     # Ensure box doesn't exceed image boundaries if dimensions are provided
     if img_width is not None and img_height is not None:
@@ -117,21 +117,17 @@ def detect_faces(
         # Chuyển đổi sang grayscale cho detection
         gray = cv2.cvtColor(cv_img, cv2.COLOR_BGR2GRAY)
         
-        # Cải thiện độ tương phản
         clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
         gray = clahe.apply(gray)
         
-        # Tăng độ sáng nhẹ - không quá nhiều để tránh noise
         brightness_corrected = cv2.convertScaleAbs(gray, alpha=1.1, beta=5)
         
-        # Kích thước tối thiểu cho khuôn mặt - tăng lên để giảm false positives
         min_face_size = max(FACE_DETECT_MIN_SIZE, 64)
         
-        # Thực hiện detection với cascade mặc định - tham số chặt chẽ hơn
         faces = face_cascade.detectMultiScale(
             gray,
-            scaleFactor=max(scale_factor, 1.1),  # Đảm bảo ít nhất 1.1
-            minNeighbors=max(min_neighbors, 5),   # Đảm bảo ít nhất 5
+            scaleFactor=max(scale_factor, 1.1), 
+            minNeighbors=max(min_neighbors, 5),
             flags=cv2.CASCADE_SCALE_IMAGE,
             minSize=(min_face_size, min_face_size)
         )
@@ -141,7 +137,7 @@ def detect_faces(
             faces = alt_face_cascade.detectMultiScale(
                 gray,
                 scaleFactor=max(scale_factor, 1.1),
-                minNeighbors=max(min_neighbors - 1, 4),  # Giảm minNeighbors một chút nhưng vẫn giữ ngưỡng cao
+                minNeighbors=max(min_neighbors - 1, 4),
                 flags=cv2.CASCADE_SCALE_IMAGE,
                 minSize=(min_face_size, min_face_size)
             )
@@ -150,8 +146,8 @@ def detect_faces(
         if len(faces) == 0:
             faces = alt_face_cascade2.detectMultiScale(
                 gray,
-                scaleFactor=1.08,  # Giảm một chút nhưng vẫn cao
-                minNeighbors=4,    # Vẫn giữ ngưỡng hợp lý
+                scaleFactor=1.08,
+                minNeighbors=4,
                 flags=cv2.CASCADE_SCALE_IMAGE,
                 minSize=(min_face_size, min_face_size)
             )
@@ -170,10 +166,10 @@ def detect_faces(
         if len(faces) == 0:
             faces = face_cascade.detectMultiScale(
                 gray,
-                scaleFactor=1.05,  # Nhạy hơn nhưng vẫn hợp lý
-                minNeighbors=4,    # Giữ ngưỡng để tránh false positives
+                scaleFactor=1.05,
+                minNeighbors=4,
                 flags=cv2.CASCADE_SCALE_IMAGE,
-                minSize=(min_face_size // 2, min_face_size // 2)  # Giảm kích thước tối thiểu
+                minSize=(min_face_size // 2, min_face_size // 2)
             )
         
         # Mở rộng các bounding box để bao quát toàn bộ phần đầu
