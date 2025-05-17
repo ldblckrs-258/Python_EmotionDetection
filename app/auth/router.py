@@ -95,7 +95,8 @@ def get_or_create_guest_user(
         value=json.dumps(guest_info),
         max_age=GUEST_COOKIE_MAX_AGE,
         httponly=True,
-        samesite="lax"
+        samesite="lax",
+        secure=True
     )
     
     return User(
