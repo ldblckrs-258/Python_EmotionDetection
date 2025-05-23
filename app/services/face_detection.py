@@ -14,7 +14,7 @@ try:
 except AttributeError:
     HAAR_CASCADE_PATH = os.path.join(os.path.dirname(cv2.__file__), 'data', 'haarcascade_frontalface_default.xml')
 
-FACE_DETECT_CONFIDENCE = float(getattr(settings, "FACE_DETECT_CONFIDENCE", 1.1))
+FACE_DETECT_CONFIDENCE = float(getattr(settings, "FACE_DETECT_CONFIDENCE", 1.15))
 FACE_DETECT_MIN_NEIGHBORS = int(getattr(settings, "FACE_DETECT_MIN_NEIGHBORS", 6))
 FACE_PADDING_FACTOR = float(getattr(settings, "FACE_PADDING_FACTOR", 0.15))
 

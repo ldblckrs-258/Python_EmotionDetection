@@ -63,7 +63,7 @@ class Settings(BaseSettings):
     LOG_FORMAT: str = os.getenv("LOG_FORMAT", "json")
     
     # Face detection minSize (for detectMultiScale)
-    FACE_DETECT_MIN_SIZE: int = int(os.getenv("FACE_DETECT_MIN_SIZE", "32"))  # default 32px
+    FACE_DETECT_MIN_SIZE: int = int(os.getenv("FACE_DETECT_MIN_SIZE", "64"))  # default 32px
     
     # class Config:
     #     env_file = ".env"
