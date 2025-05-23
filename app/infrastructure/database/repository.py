@@ -69,6 +69,11 @@ class RefreshTokenRepository:
     async def delete(self, refresh_token: str):
         await self.collection.delete_one({"refresh_token": refresh_token})
 
+    async def delete_expired(self, cutoff_time: float) -> int:
+        """Delete expired refresh tokens based on expires_at timestamp."""
+        result = await self.collection.delete_many({"expires_at": {"$lt": cutoff_time}})
+        return result.deleted_count
+
 class RateLimitRepository:
     def __init__(self, collection: AsyncIOMotorCollection):
         self.collection = collection

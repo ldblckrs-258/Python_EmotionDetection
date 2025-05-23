@@ -20,6 +20,8 @@ from app.core.metrics import MetricsMiddleware, metrics_endpoint
 from app.services.database import get_database
 from firebase_admin import auth
 from app.core.rate_limit import get_rate_limiter
+from app.infrastructure.database.repository import get_refresh_token_repository
+import time
 
 favicon_path = "./favicon.ico"
 
@@ -29,8 +31,9 @@ logger = get_logger("main")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Start background task for rate limiter cleanup
+    # Start background tasks for cleanup
     cleanup_task = None
+    refresh_token_cleanup_task = None
     
     async def cleanup_rate_limits():
         while True:
@@ -43,26 +46,46 @@ async def lifespan(app: FastAPI):
             # Run once a day
             await asyncio.sleep(24 * 60 * 60)  # 24 hours
     
+    async def cleanup_refresh_tokens():
+        while True:
+            try:
+                refresh_token_repo = get_refresh_token_repository()
+                current_time = time.time()
+                deleted_count = await refresh_token_repo.delete_expired(current_time)
+                logger.info(f"Refresh token cleanup completed. Deleted {deleted_count} expired tokens")
+            except Exception as e:
+                logger.error(f"Error in refresh token cleanup: {str(e)}")
+            # Run once a day
+            await asyncio.sleep(24 * 60 * 60)  # 24 hours
+    
     try:
         logger.info("Starting up MongoDB connection")
         await connect_to_mongodb()
         
-        # Start background cleanup task
+        # Start background cleanup tasks
         cleanup_task = asyncio.create_task(cleanup_rate_limits())
-        logger.info("Rate limit cleanup task started")
+        refresh_token_cleanup_task = asyncio.create_task(cleanup_refresh_tokens())
+        logger.info("Rate limit and refresh token cleanup tasks started")
         
         yield
     finally:
         logger.info("Shutting down MongoDB connection")
         await close_mongodb_connection()
         
-        # Cancel background task
+        # Cancel background tasks
         if cleanup_task:
             cleanup_task.cancel()
             try:
                 await cleanup_task
             except asyncio.CancelledError:
                 logger.info("Rate limit cleanup task cancelled")
+        
+        if refresh_token_cleanup_task:
+            refresh_token_cleanup_task.cancel()
+            try:
+                await refresh_token_cleanup_task
+            except asyncio.CancelledError:
+                logger.info("Refresh token cleanup task cancelled")
 
 
 def custom_openapi():
