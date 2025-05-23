@@ -111,6 +111,25 @@ def detect_faces(
             flags=cv2.CASCADE_SCALE_IMAGE,
             minSize=(min_face_size, min_face_size)
         )
+        
+        if len(faces) == 0:
+            brightness_corrected = cv2.convertScaleAbs(gray, alpha=1.1, beta=5)
+            faces = face_cascade.detectMultiScale(
+                brightness_corrected,
+                scaleFactor=1.1,
+                minNeighbors=5,
+                flags=cv2.CASCADE_SCALE_IMAGE,
+                minSize=(min_face_size, min_face_size)
+            )
+        
+        if len(faces) == 0:
+            faces = face_cascade.detectMultiScale(
+                gray,
+                scaleFactor=1.08,
+                minNeighbors=4,
+                flags=cv2.CASCADE_SCALE_IMAGE,
+                minSize=(min_face_size, min_face_size)
+            )
 
         faces = non_max_suppression(faces, overlapThresh=0.3)
 
